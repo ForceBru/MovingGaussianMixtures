@@ -2,7 +2,8 @@
 function Plots.plot(
 	est::GaussianMixtureEstimate{k}, x_orig::Union{Missing, AbstractVector}=missing;
 	n_sigmas::Real=3, x_length::Integer=500,
-	title::Union{Missing, AbstractString}=missing, alpha::Real=.5, ylims=(0.0, Inf)
+	title::Union{Missing, AbstractString}=missing, bins=50,
+	alpha::Real=.5, ylims=(0.0, Inf)
 ) where k
 	@assert 0 <= alpha <= 1
 
@@ -26,7 +27,7 @@ function Plots.plot(
 		Plots.plot(title=title)
 	else
 		Plots.histogram(
-			x_orig, normalize=:pdf,
+			x_orig, normalize=:pdf, bins=bins,
 			title=title, label="Original data",
 			linewidth=0, alpha=alpha,
 			fontfamily="monospace"
