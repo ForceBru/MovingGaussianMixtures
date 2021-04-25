@@ -5,7 +5,7 @@ using StaticArrays
 
 import Plots
 
-export log_likelihood, GaussianMixture, GaussianMixtureEstimate, kmeans!, em!
+export log_likelihood, GaussianMixture, GaussianMixtureEstimate, kmeans, em
 
 const EPS = 1e-10
 
@@ -154,7 +154,7 @@ log_likelihood(x, est::GaussianMixtureEstimate{k, T}) where {k, T} = log_likelih
 @inline function _no_zeros!(vec::AbstractVector{T}, k, eps::T) where T <: Real
 	@inbounds for i ∈ 1:k
     	if vec[i] ≈ zero(T)
-    		vec[i] += eps
+    		vec[i] = eps
     	end
     end
 end
@@ -171,7 +171,7 @@ function kmeans!(data::GaussianMixture{k, T}, x::AbstractVector{T}, n_steps::Uns
 	p_tmp, μ_tmp, σ_tmp = get_pμσ(data.θ_tmp)
 
 	for _ ∈ 1:n_steps
-		data.probs .= μ_tmp .= σ_tmp .= zero(T)
+		@. data.probs = μ_tmp = σ_tmp = zero(T)
 
 		@inbounds for x_ ∈ x
 			# Get index of the centroid closest
@@ -201,8 +201,8 @@ function kmeans!(data::GaussianMixture{k, T}, x::AbstractVector{T}, n_steps::Uns
 		p .= data.probs ./ sum(data.probs)
 
         # Update centers and standard deviations of mixture components
-		μ .= μ_tmp ./ data.probs
-		σ .= sqrt.(σ_tmp ./ data.probs)
+		@. μ = μ_tmp / data.probs
+		@. σ = sqrt(σ_tmp / data.probs)
 		
 		_no_zeros!(σ, k, eps)
 	end
@@ -227,16 +227,16 @@ will converge too quickly in high dimensions (curse of dimensionality?)
 """
 function em!(
 		data::GaussianMixture{k, T}, x::AbstractVector{T};
-		tol::T=3e-4, eps=EPS, kmeans_steps::Unsigned=UInt(4), metric=metric_l1, raw=false
+		tol::T=3e-4, maxiter::Unsigned=UInt(500), eps=EPS, kmeans_steps::Unsigned=UInt(4), metric=metric_l1, raw=false
 	) where {k, T <: Real}
     # All of these are "pointers" into `θ`
 	_, p, μ, σ, p_tmp, μ_tmp, σ_tmp = kmeans!(data, x, kmeans_steps; raw=true)
 
 	i = UInt(0)
-	while i == 0 || metric(data.θ, data.θ_old) > tol
-		data.probs .= μ_tmp .= σ_tmp .= zero(T)
+	while (i == 0 || metric(data.θ, data.θ_old) > tol) && (i < maxiter)
+		@. data.probs = μ_tmp = σ_tmp = zero(T)
 		
-		data.pσ .= p ./ σ
+		@. data.pσ = p / σ
 		for x_ ∈ x
 			# These are basically the heights of each Gaussian at `x_`
 			# Loops are faster than `@. data.distances = data.pσ * ϕ((x_ - μ) / σ)`
@@ -247,10 +247,10 @@ function em!(
 				data.distances[i] = d
 			end
 			# Probabilities that `x_` belongs to each component
-			data.probs_tmp .= data.distances ./ the_sum #sum(data.distances)
+			@. data.probs_tmp = data.distances / the_sum
 
-			μ_tmp .+= x_ .* data.probs_tmp
-			σ_tmp .+= (x_ .- μ).^2 .* data.probs_tmp
+			@. μ_tmp += x_ * data.probs_tmp
+			@. σ_tmp += (x_ - μ)^2 * data.probs_tmp
 			data.probs .+= data.probs_tmp
 		end
 		
@@ -264,8 +264,8 @@ function em!(
 		p .= data.probs ./ sum(data.probs)
 
         # Update centers and standard deviations of mixture components
-		μ .= μ_tmp ./ data.probs
-		σ .= sqrt.(σ_tmp ./ data.probs)
+		@. μ = μ_tmp / data.probs
+		@. σ = sqrt(σ_tmp / data.probs)
 
 		_no_zeros!(σ, k, eps)
 		
