@@ -2,7 +2,7 @@ using Plots
 
 import MovingGaussianMixtures
 
-x = [
+sample_data = [
 0.000177951775538746, 0.00392297222083862, 0.00573375518171434, -0.00215401267990863, 0.000538068347660303,
 -0.00143420605437389, 0.000896137706713716, 0.000896941489857404, 0.00107739281386029, 0.0,
 -0.00179501035452376, -0.00429492428288084, -0.00658541135833433, 0.00355429554914226, -0.00160099651736935,
@@ -50,7 +50,39 @@ x = [
 0.000775494416530351, -0.00734302816361565, 0.00212007403298724, 0.000192957067651188, -0.00442861992701387,
 ]
 
-mix = MovingGaussianMixtures.GaussianMixture(x, UInt(5))
-ret = MovingGaussianMixtures.em!(mix, x)
+# Don't automatically show plots
+default(show=false)
 
-plot(ret, x)
+const DISPLAY = false
+function do_display(last=false)
+	display(plt)
+
+	if ! last
+		print("Hit ENTER for next plot: ")
+		readline()
+	end
+end
+
+const N_COMPONENTS = UInt(5)
+const WINDOW_SIZE = UInt(10)
+
+@info "Estimating with k-means..."
+ret_kmeans = MovingGaussianMixtures.kmeans(sample_data, N_COMPONENTS)
+plt = plot(ret_kmeans, sample_data)
+savefig(plt, "img/mixture_kmeans.png")
+
+DISPLAY && do_display()
+
+@info "Estimating with EM..."
+ret_em = MovingGaussianMixtures.em(sample_data, N_COMPONENTS)
+plt = plot(ret_em, sample_data)
+savefig(plt, "img/mixture_em.png")
+
+DISPLAY && do_display()
+
+@info "Running MGM..."
+ret_mov = MovingGaussianMixtures.em(sample_data, N_COMPONENTS, WINDOW_SIZE, step_size=UInt(1))
+plt = scatter(ret_mov, markersize=2, alpha=.5)
+savefig(plt, "img/running_em.png")
+
+DISPLAY && do_display(true)
