@@ -271,3 +271,14 @@ EM algorithm. Fit the model to `x`.
 - Accepts same keyword arguments as `em!`
 """
 em(x::AbstractVector, k::Integer; kwargs...) = em!(GaussianMixture(x, UInt(k)), x; raw=false, kwargs...)
+
+"""
+    kmeans(x::AbstractVector, k::Integer, n_steps::Unsigned=UInt(20); kwargs...)
+
+Fit gaussian mixture model with `k` components to data in `x` using k-means.
+
+- `k` - number of mixture components
+- `n_steps` - number of k-mens steps
+- For keyword arguments see `em!`
+"""
+kmeans(x::AbstractVector, k::Integer, n_steps::Unsigned=UInt(20); kwargs...) = kmeans!(GaussianMixture(x, UInt(k)), x, n_steps; raw=false, kwargs...)
