@@ -1,4 +1,4 @@
-# MovingGaussianMixtures
+# MovingGaussianMixtures.jl
 
 Estimate 1D finite Gaussian mixture models in Julia.
 
