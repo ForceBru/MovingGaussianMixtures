@@ -1,0 +1,287 @@
+module MovingGaussianMixtures
+
+using Printf
+using LinearAlgebra: norm
+using Statistics: quantile
+using StaticArrays
+
+import Plots
+
+export log_likelihood, GaussianMixture, kmeans!, em!
+
+const EPS = 1e-10
+
+"Density of standard normal distribution"
+@inline ϕ(x::Number) = exp(-x^2 / 2) / sqrt(2π)
+
+"Density of mixture component (unweighted)"
+@inline pdf(x::AbstractVector, μ::Number, σ::Number) = @. ϕ((x - μ) / σ) / σ
+
+"""
+Log likelihood to be optimized:
+
+    ∑ₜlog(∑ᵢpᵢ * ϕ((xₜ - μᵢ) / σᵢ))
+"""
+@inline log_likelihood(x, p, μ, σ) = sum(log.((p ./ σ)' * ϕ.((x' .- μ) ./ σ)))
+
+# Termination criteria
+@inline metric_l1(θ₀::AbstractVector, θ₁::AbstractVector) = maximum(abs.(θ₀ - θ₁))
+@inline metric_l2(θ₀::AbstractVector, θ₁::AbstractVector) = norm(θ₀ - θ₁)
+
+"""
+All parameters are stored into a single vector θ,
+but sometimes individual parameters (p, μ, σ) need to be accessed.
+`get_pμσ` implements this access.
+"""
+@inline function get_pμσ(θ::AbstractVector, k::Integer)
+	p = @view θ[1:k]
+	μ = @view θ[k + 1:2k]
+	σ = @view θ[2k + 1:end]
+	
+	p, μ, σ
+end
+
+@inline function get_pμσ(θ::MVector{_3k}) where _3k
+	k = Int(_3k / 3)
+	p = @view θ[1:k]
+	μ = @view θ[k + 1:2k]
+	σ = @view θ[2k + 1:end]
+	
+	p, μ, σ
+end
+
+"""
+Storage for all data needed for EM algorithm.
+
+- `k` - integer that specifies the number of components
+ in the mixture;
+- `_3k` - `3 * k`, needed for `StaticArrays`
+"""
+mutable struct GaussianMixture{k, T <: Real, _3k}
+    # Parameters to be estimated
+	θ::MVector{_3k, T}
+	θ_old::MVector{_3k, T}
+	θ_tmp::MVector{_3k, T}
+	
+    # Probabilities for each component
+	probs::MVector{k, T}
+	probs_tmp::MVector{k, T}
+	distances::MVector{k, T}
+
+    # Vector to store temporary `p ./ σ`
+	pσ::MVector{k, T}
+	
+	"""
+	    GaussianMixture(x::AbstractVector{T}, k::UInt) where T <: Real
+
+	- `x` is an example window the model will be optimized for;
+	- `k` is the number of mixture components
+	"""
+	function GaussianMixture(x::AbstractVector{T}, k::UInt) where T <: Real
+		@assert k > 1
+		k = Int(k)
+		
+        # Initialize parameters
+		θ = MVector([
+            # pᵢ = 1/k
+			ones(k) ./ k;
+            # μᵢ = quantile(i)
+			quantile(x, range(zero(T), one(T), length=k));
+            # σᵢ = 1
+			ones(k)
+		]...)
+		θ_old = @MVector zeros(T, 3k)
+		θ_tmp = MVector{3k, T}(undef)
+		
+		probs = MVector{k, T}(undef)
+		probs_tmp = MVector{k, T}(undef)
+		distances = MVector{k, T}(undef)
+		
+		new{k, T, 3k}(
+			θ, θ_old, θ_tmp,
+			probs, probs_tmp, distances,
+			MVector{k, T}(undef)
+		)
+	end
+end
+
+"""
+Stores estimates:
+
+- `p` - weights of mixture components;
+- `μ` - expected values of components;
+- `σ` - standard deviations of components;
+"""
+struct GaussianMixtureEstimate{k, T <: Real}
+	n_iter::UInt
+
+	p::MVector{k, T}
+	μ::MVector{k, T}
+	σ::MVector{k, T}
+
+	function GaussianMixtureEstimate(n_iter::UInt, p::AbstractVector{T}, μ::AbstractVector{T}, σ::AbstractVector{T}) where T <: Real
+		@assert length(p) == length(μ) == length(σ)
+
+		k = length(p)
+		new{k, T}(n_iter, MVector{k, T}(p), MVector{k, T}(μ), MVector{k, T}(σ))
+	end
+end
+
+log_likelihood(x, est::GaussianMixtureEstimate{k, T}) where {k, T} = log_likelihood(x, est.p, est.μ, est.σ)
+
+"Plot kernel density estimate"
+function Plots.plot(
+	est::GaussianMixtureEstimate{k, T}, x_orig::Union{Missing, AbstractVector}=missing;
+	n_sigmas::Real=3, x_length=500
+) where {k, T <: Real}
+	x_lo, x_hi = let
+		idx_lo, idx_hi = argmin(est.μ), argmax(est.μ)
+
+		est.μ[idx_lo] - n_sigmas * est.σ[idx_lo], est.μ[idx_hi] + n_sigmas * est.σ[idx_hi]
+	end
+
+	x = range(x_lo, x_hi; length=x_length)
+	kde = zeros(size(x))
+	order = sortperm(est.p, rev=true)
+
+	title = "Gaussian mixture with $(Int(k)) components"
+	plt = if x_orig === missing
+		Plots.plot(title=title)
+	else
+		Plots.histogram(
+			x_orig, normalize=:pdf,
+			title=title, label="Original data",
+			linewidth=0, alpha=.5
+		)
+	end
+
+	# Plot individual components
+	for (i, (p, μ, σ)) ∈ enumerate(zip(est.p[order], est.μ[order], est.σ[order]))
+		pdf_ = p .* pdf(x, μ, σ)
+		kde .+= pdf_
+
+		label = i <= 5 ? @sprintf("p=%.2f μ=%+.3f σ=%.3f", p, μ, σ) : ""
+
+		Plots.plot!(plt, x, pdf_, label=label, ylims=(0.0, Inf))
+	end
+
+	# Plot full KDE
+	Plots.plot!(plt, x, kde, label="KDE", ylims=(0.0, Inf), linewidth=2)
+end
+
+"""
+    kmeans!(data::GaussianMixture{k, T}, x::AbstractVector{T}, n_steps::Unsigned; eps::T=1e-6) where {k, T <: Real}
+
+Fit gaussian mixture model with `k` components to data in `x` using k-means.
+Used mainly as initialization for EM.
+"""
+function kmeans!(data::GaussianMixture{k, T}, x::AbstractVector{T}, n_steps::Unsigned; eps=EPS, raw=false) where {k, T <: Real}
+	p, μ, σ = get_pμσ(data.θ)
+	p_tmp, μ_tmp, σ_tmp = get_pμσ(data.θ_tmp)
+
+	for _ ∈ 1:n_steps
+		data.probs .= μ_tmp .= σ_tmp .= zero(T)
+
+		@inbounds for x_ ∈ x
+			# Get index of the centroid closest
+			# to the current data point `x_`
+			@. data.distances = abs(μ - x_)
+			idx = argmin(data.distances)
+			
+			# Temporary computations for
+			# new centroids and standard deviations
+			# for each cluster
+			μ_tmp[idx] += x_
+			σ_tmp[idx] += (x_ - μ[idx])^2
+
+			# Temporary computations for probabilities
+			# for a data point to be part of this cluster.
+			# These aren't really probabilities,
+			# but number of items in `x` that
+			# are closest to the centroid number `idx`.
+			data.probs[idx] += 1
+		end
+
+		# We'll divide by `data.probs` later,
+        # so make sure there are no zeros
+		data.probs .+= eps
+
+        # Probabilities to choose each mixture component
+		p .= data.probs ./ sum(data.probs)
+
+        # Update centers and standard deviations of mixture components
+		μ .= μ_tmp ./ data.probs
+		σ .= sqrt.(σ_tmp ./ data.probs) .+ eps
+	end
+
+	if raw
+		(n_steps, p, μ, σ, p_tmp, μ_tmp, σ_tmp)
+	else
+		GaussianMixtureEstimate(n_steps, p, μ, σ)
+	end
+end
+
+"""
+    em!(
+		data::GaussianMixture{k, T}, x::AbstractVector{T};
+		tol::T=3e-4, eps::T=1e-4, kmeans_steps::Unsigned=UInt(4), metric=metric_l1
+	)
+
+EM algorithm. Fit the model to data in `x`.
+
+It's probably better to use `metric_l1` because `metric_l2`
+will converge too quickly in high dimensions (curse of dimensionality?)
+"""
+function em!(
+		data::GaussianMixture{k, T}, x::AbstractVector{T};
+		tol::T=3e-4, eps=EPS, kmeans_steps::Unsigned=UInt(4), metric=metric_l2, raw=false
+	) where {k, T <: Real}
+    # All of these are "pointers" into `θ`
+	_, p, μ, σ, p_tmp, μ_tmp, σ_tmp = kmeans!(data, x, kmeans_steps; raw=true)
+
+	i = UInt(0)
+	while i == 0 || metric(data.θ, data.θ_old) > tol
+		data.probs .= μ_tmp .= σ_tmp .= zero(T)
+		
+		data.pσ .= p ./ σ
+		for x_ ∈ x
+			# These are basically the heights of each Gaussian at `x_`
+			# Loops are faster than `@. data.distances = data.pσ * ϕ((x_ - μ) / σ)`
+			the_sum = zero(T)
+			@inbounds for i ∈ 1:k
+				d = data.pσ[i] * ϕ((x_ - μ[i]) / σ[i])
+				the_sum += d
+				data.distances[i] = d
+			end
+			# Probabilities that `x_` belongs to each component
+			data.probs_tmp .= data.distances ./ the_sum #sum(data.distances)
+
+			μ_tmp .+= x_ .* data.probs_tmp
+			σ_tmp .+= (x_ .- μ).^2 .* data.probs_tmp
+			data.probs .+= data.probs_tmp
+		end
+		
+		data.θ_old .= data.θ
+		
+        # We'll divide by `data.probs` later,
+        # so make sure there are no zeros
+		data.probs .+= eps
+
+        # Probabilities to choose each mixture component
+		p .= data.probs ./ sum(data.probs)
+
+        # Update centers and standard deviations of mixture components
+		μ .= μ_tmp ./ data.probs
+		σ .= sqrt.(σ_tmp ./ data.probs) .+ eps
+		
+		i += 1
+	end
+	
+	if raw
+		(i, p, μ, σ)
+	else
+		GaussianMixtureEstimate(i, p, μ, σ)
+	end
+end
+
+end # module
