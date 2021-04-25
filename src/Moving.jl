@@ -185,7 +185,7 @@ end
 
 function em(
 		x::AbstractVector{T}, k::UInt, win_size::UInt;
-		step_size::UInt=UInt(5), tol::T=3e-4, verbose::Integer=1000
+		step_size::UInt=UInt(5), verbose::Integer=1000, kwargs...
 )::MovingGaussianMixture{T} where T <: Real
-	em(x, collect(1:length(x)), k, win_size, step_size=step_size, tol=tol, verbose=verbose)
+	em(x, collect(1:length(x)), k, win_size; step_size=step_size, verbose=verbose, kwargs...)
 end
