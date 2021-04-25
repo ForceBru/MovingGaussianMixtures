@@ -202,14 +202,14 @@ end
 		tol::T=3e-4, eps::T=1e-4, kmeans_steps::Unsigned=UInt(4), metric=metric_l1
 	)
 
-EM algorithm. Fit the model to data in `x`.
+EM algorithm. Fit the model to `x`, modifying `data`.
 
 It's probably better to use `metric_l1` because `metric_l2`
 will converge too quickly in high dimensions (curse of dimensionality?)
 """
 function em!(
 		data::GaussianMixture{k, T}, x::AbstractVector{T};
-		tol::T=3e-4, eps=EPS, kmeans_steps::Unsigned=UInt(4), metric=metric_l2, raw=false
+		tol::T=3e-4, eps=EPS, kmeans_steps::Unsigned=UInt(4), metric=metric_l1, raw=false
 	) where {k, T <: Real}
     # All of these are "pointers" into `θ`
 	_, p, μ, σ, p_tmp, μ_tmp, σ_tmp = kmeans!(data, x, kmeans_steps; raw=true)
@@ -258,3 +258,16 @@ function em!(
 		GaussianMixtureEstimate(i, p, μ, σ)
 	end
 end
+
+"""
+    em(
+		x::AbstractVector{T}, k::Integer;
+		tol::T=3e-4, eps=EPS, kmeans_steps::Unsigned=UInt(4), metric=metric_l2
+	) where T <: Real
+
+EM algorithm. Fit the model to `x`.
+
+- `k` - number of mixture components
+- Accepts same keyword arguments as `em!`
+"""
+em(x::AbstractVector, k::Integer; kwargs...) = em!(GaussianMixture(x, UInt(k)), x; raw=false, kwargs...)
