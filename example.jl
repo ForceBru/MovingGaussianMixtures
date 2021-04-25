@@ -63,7 +63,7 @@ function do_display(last=false)
 	end
 end
 
-const N_COMPONENTS = UInt(5)
+const N_COMPONENTS = UInt(7)
 const WINDOW_SIZE = UInt(10)
 
 @info "Estimating with k-means..."
@@ -84,5 +84,8 @@ DISPLAY && do_display()
 ret_mov = MovingGaussianMixtures.em(sample_data, N_COMPONENTS, WINDOW_SIZE, step_size=UInt(1))
 plt = scatter(ret_mov, markersize=2, alpha=.5)
 savefig(plt, "img/running_em.png")
+
+plt = scatter(ret_mov, markersize=2, alpha=.8, shade=true)
+savefig(plt, "img/running_em_shaded.png")
 
 DISPLAY && do_display(true)

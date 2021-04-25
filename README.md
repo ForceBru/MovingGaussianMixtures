@@ -33,4 +33,10 @@ For code, see [example.jl](example.jl).
 
 ### Dynamic estimation
 
+Colors represent ID of component:
+
 ![dynamic_em](img/running_em.png)
+
+Colors represent weights of components:
+
+![dynamic_em_shaded](img/running_em_shaded.png)
