@@ -16,6 +16,8 @@ const EPS = 1e-10
 @inline pdf(x::AbstractVector, μ::Number, σ::Number) = @. ϕ((x - μ) / σ) / σ
 
 """
+    log_likelihood(x, p, μ, σ)
+
 Log likelihood to be optimized:
 
     ∑ₜlog(∑ᵢpᵢ * ϕ((xₜ - μᵢ) / σᵢ))
@@ -142,7 +144,21 @@ function Base.sort(est::GaussianMixtureEstimate{k, T}; by=:μ, rev=true) where {
 	)
 end
 
+"""
+    log_likelihood(x, est::GaussianMixtureEstimate{k, T}) where {k, T}
+
+Evaluate log-likelihood obtained by this fit
+"""
 log_likelihood(x, est::GaussianMixtureEstimate{k, T}) where {k, T} = log_likelihood(x, est.p, est.μ, est.σ)
+
+@inline function _no_zeros!(vec::AbstractVector{T}, k, eps::T) where T <: Real
+	@inbounds for i ∈ 1:k
+    	if vec[i] ≈ zero(T)
+    		vec[i] += eps
+    	end
+    end
+end
+
 
 """
     kmeans!(data::GaussianMixture{k, T}, x::AbstractVector{T}, n_steps::Unsigned; eps::T=1e-6) where {k, T <: Real}
@@ -179,14 +195,16 @@ function kmeans!(data::GaussianMixture{k, T}, x::AbstractVector{T}, n_steps::Uns
 
 		# We'll divide by `data.probs` later,
         # so make sure there are no zeros
-		data.probs .+= eps
+        _no_zeros!(data.probs, k, eps)
 
         # Probabilities to choose each mixture component
 		p .= data.probs ./ sum(data.probs)
 
         # Update centers and standard deviations of mixture components
 		μ .= μ_tmp ./ data.probs
-		σ .= sqrt.(σ_tmp ./ data.probs) .+ eps
+		σ .= sqrt.(σ_tmp ./ data.probs)
+		
+		_no_zeros!(σ, k, eps)
 	end
 
 	if raw
@@ -240,14 +258,16 @@ function em!(
 		
         # We'll divide by `data.probs` later,
         # so make sure there are no zeros
-		data.probs .+= eps
+		_no_zeros!(data.probs, k, eps)
 
         # Probabilities to choose each mixture component
 		p .= data.probs ./ sum(data.probs)
 
         # Update centers and standard deviations of mixture components
 		μ .= μ_tmp ./ data.probs
-		σ .= sqrt.(σ_tmp ./ data.probs) .+ eps
+		σ .= sqrt.(σ_tmp ./ data.probs)
+
+		_no_zeros!(σ, k, eps)
 		
 		i += 1
 	end
