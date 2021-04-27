@@ -1,4 +1,4 @@
-using Plots
+using Plots, HDF5
 
 import MovingGaussianMixtures
 
@@ -65,6 +65,7 @@ end
 
 const N_COMPONENTS = UInt(7)
 const WINDOW_SIZE = UInt(10)
+const OUT_FILE = "test_data.h5"
 
 @info "Estimating with k-means..."
 ret_kmeans = MovingGaussianMixtures.kmeans(sample_data, N_COMPONENTS)
@@ -85,7 +86,23 @@ ret_mov = MovingGaussianMixtures.em(sample_data, N_COMPONENTS, WINDOW_SIZE, step
 plt = scatter(ret_mov, markersize=2, alpha=.5)
 savefig(plt, "img/running_em.png")
 
-plt = scatter(ret_mov, markersize=2, alpha=.8, shade=true)
+@info "Saving data to $OUT_FILE..."
+h5open(OUT_FILE, "w") do fid
+	write(fid, ret_mov)
+end
+@info "Data saved!"
+
+@info "Reading data from $OUT_FILE..."
+ret_read = h5open(OUT_FILE, "r") do fid
+	read(fid, MovingGaussianMixtures.MovingGaussianMixture, parse_dates=false)
+end
+@info "Data read!"
+
+@info "Plotting data from $OUT_FILE..."
+plt = scatter(ret_read, markersize=2, alpha=.8, shade=true)
 savefig(plt, "img/running_em_shaded.png")
 
 DISPLAY && do_display(true)
+
+@info "ALL DONE!"
+

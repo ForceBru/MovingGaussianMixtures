@@ -49,30 +49,30 @@ Struct that holds the MGM results.
 
 `P`, `M` and `Σ` are (`n_components` by `length(dates)`) matrices with columns stored in the same order as the `dates`.
 """
-struct MovingGaussianMixture{T <: Real, I <:Number}
+struct MovingGaussianMixture{T <: Real, D <: Union{DateTime, Number}}
 	key::MGMKey
 	
-	dates::Union{Vector{DateTime}, Vector{I}}
+	dates::Vector{D}
 	P::Matrix{T}
 	M::Matrix{T}
 	Σ::Matrix{T}
 
 	function MovingGaussianMixture(
-		key::MGMKey, dates::Union{Vector{DateTime}, Vector{I}},
+		key::MGMKey, dates::Vector{D},
 		P::Matrix{T}, M::Matrix{T}, Σ::Matrix{T}
-	) where {T <: Real, I <: Number}
+	) where {T <: Real, D <: Union{DateTime, Number}}
 		@assert size(P) == size(M) == size(Σ)
 		@assert key.k == size(P, 1)
 		@assert length(dates) == size(P, 2)
 		
-		new{T, I}(key, dates, P, M, Σ)
+		new{T, D}(key, dates, P, M, Σ)
 	end
 end
 
 function MovingGaussianMixture(
-	win_size::UInt, step_size::UInt, dates::Union{Vector{DateTime}, Vector{I}},
+	win_size::UInt, step_size::UInt, dates::Vector{D},
 	P::Matrix{T}, M::Matrix{T}, Σ::Matrix{T}
-) where {T <: Real, I <: Number}
+) where {T <: Real, D <: Union{DateTime, Number}}
 	k = size(P, 1)
 		
 	MovingGaussianMixture(
@@ -81,13 +81,11 @@ function MovingGaussianMixture(
 	)
 end
 
-"""
-    Base.write(fid::HDF5.File, data::MovingGaussianMixture{T}) where T
-
-Write `MovingGaussianMixture` to an open HDF5 file.
-"""
-function Base.write(fid::HDF5.File, data::MovingGaussianMixture{T}) where T
-	grp_name = repr(MIME("text/plain"), data.key)
+function _write_data(
+	fid::HDF5.File,
+	grp_name::AbstractString, dates::AbstractVector{T},
+	P::AbstractMatrix, M::AbstractMatrix, Σ::AbstractMatrix
+) where T <: Union{Number, AbstractString}
 	g = try
 		create_group(fid, grp_name)
 	catch e
@@ -99,10 +97,25 @@ function Base.write(fid::HDF5.File, data::MovingGaussianMixture{T}) where T
 		create_group(fid, grp_name)
 	end
 	
-	write(g, "dates", datetime2unix.(data.dates))
-	write(g, "P", data.P)
-	write(g, "M", data.M)
-	write(g, "v", data.Σ)
+	write(g, "dates", dates)
+	write(g, "P", P)
+	write(g, "M", M)
+	write(g, "v", Σ)
+end
+
+"""
+    Base.write(fid::HDF5.File, data::MovingGaussianMixture{T}) where T
+
+Write `MovingGaussianMixture` to an open HDF5 file.
+"""
+function Base.write(fid::HDF5.File, data::MovingGaussianMixture{T, D}) where {T, D <: DateTime}
+	grp_name = repr(MIME("text/plain"), data.key)
+	_write_data(fid, grp_name, datetime2unix.(data.dates), data.P, data.M, data.Σ)
+end
+
+function Base.write(fid::HDF5.File, data::MovingGaussianMixture)
+	grp_name = repr(MIME("text/plain"), data.key)
+	_write_data(fid, grp_name, data.dates, data.P, data.M, data.Σ)
 end
 
 """
@@ -110,7 +123,10 @@ end
 
 Read `MovingGaussianMixture` from an open HDF5 file
 """
-function Base.read(fid::HDF5.File, ::Type{MovingGaussianMixture}, group_name::Union{Missing, AbstractString}=missing)::MovingGaussianMixture
+function Base.read(
+	fid::HDF5.File, ::Type{MovingGaussianMixture},
+	group_name::Union{Missing, AbstractString}=missing; parse_dates=true
+)::MovingGaussianMixture
 	the_keys = keys(fid)
 	if length(the_keys) == 0
 		error("Empty HDF5 file!")
@@ -124,7 +140,7 @@ function Base.read(fid::HDF5.File, ::Type{MovingGaussianMixture}, group_name::Un
 
 	MovingGaussianMixture(
 		parse(MGMKey, group_name),
-		unix2datetime.(read(g["dates"])),
+		parse_dates ? unix2datetime.(read(g["dates"])) : read(g["dates"]),
 		read(g["P"]), read(g["M"]), read(g["v"])
 	)
 end
@@ -151,9 +167,9 @@ Moving Separation of Mixtures algorithm.
 - `step_size` - step between windows
 """
 function em(
-		x::AbstractVector{T}, dates::Union{AbstractVector{DateTime}, AbstractVector{I}}, k::UInt, win_size::UInt;
+		x::AbstractVector{T}, dates::AbstractVector{D}, k::UInt, win_size::UInt;
 		step_size::UInt=UInt(5), verbose::Integer=1000, kwargs...
-)::MovingGaussianMixture{T} where {T <: Real, I <: Number}
+)::MovingGaussianMixture{T} where {T <: Real, D <: Union{DateTime, Number}}
 	@assert size(dates) == size(x)
 	
 	the_range = win_size:step_size:length(x)
