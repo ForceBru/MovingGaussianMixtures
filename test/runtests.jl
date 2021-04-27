@@ -52,8 +52,8 @@ sample_data = [
 
 # Don't automatically show plots
 default(show=false)
-
 const DISPLAY = false
+
 function do_display(last=false)
 	display(plt)
 
@@ -65,7 +65,7 @@ end
 
 const N_COMPONENTS = UInt(7)
 const WINDOW_SIZE = UInt(10)
-const OUT_FILE = "test_data.h5"
+const OUT_FILE = "sample_results.h5"
 
 @info "Estimating with k-means..."
 ret_kmeans = MovingGaussianMixtures.kmeans(sample_data, N_COMPONENTS)
