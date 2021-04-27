@@ -1,12 +1,17 @@
-"Plot kernel density estimate"
-function Plots.plot(
-	est::GaussianMixtureEstimate{k}, x_orig::Union{Missing, AbstractVector}=missing;
-	n_sigmas::Real=3, x_length::Integer=500,
-	title::Union{Missing, AbstractString}=missing, bins=50,
-	alpha::Real=.5, ylims=(0.0, Inf)
-) where k
-	@assert 0 <= alpha <= 1
+using RecipesBase
 
+"""
+    plot(est::GaussianMixtureEstimate, x_orig::Union{Missing, AbstractVector}=missing;
+	    n_sigmas::Real=3, x_length::Integer=500
+    )
+
+Plot kernel density estimate.
+
+- `x_orig` - data used to fit the model; used to plot a histogram in the background
+"""
+@recipe function f(est::GaussianMixtureEstimate, x_orig::Union{Missing, AbstractVector}=missing;
+	n_sigmas::Real=3, x_length::Integer=500
+)
 	x_lo, x_hi = if x_orig === missing
 		idx_lo, idx_hi = argmin(est.μ), argmax(est.μ)
 
@@ -19,19 +24,18 @@ function Plots.plot(
 	kde = zeros(size(x))
 	est_sorted = sort(est, by=:p)
 
-	if title === missing
-		title = "Gaussian mixture with $(Int(k)) components"
-	end
+	ylims --> (0.0, Inf)
 
-	plt = if x_orig === missing
-		Plots.plot(title=title)
-	else
-		Plots.histogram(
-			x_orig, normalize=:pdf, bins=bins,
-			title=title, label="Original data",
-			linewidth=0, alpha=alpha,
-			fontfamily="monospace"
-		)
+	if x_orig !== missing
+		@series begin
+			seriestype := :histogram
+			normalize := :pdf
+			label --> "Original data"
+			linewidth --> 0
+			seriesalpha --> 0.5
+
+			x_orig
+		end
 	end
 
 	# Plot individual components
@@ -41,33 +45,37 @@ function Plots.plot(
 
 		label = i <= 5 ? @sprintf("p=%.2f μ=% .3f σ=%.3f", p, μ, σ) : ""
 
-		Plots.plot!(plt, x, pdf_, label=label, ylims=ylims, fontfamily="monospace")
+		@series begin
+			label := label
+			fontfamily := "monospace"
+
+			x, pdf_
+		end
 	end
 
 	# Plot full KDE
-	Plots.plot!(plt, x, kde, label="KDE", ylims=ylims, linewidth=2, legend=true, fontfamily="monospace")
+	@series begin
+		label --> "KDE"
+		fontfamily := "monospace"
+		linewidth := 2
+
+		x, kde
+	end
 end
 
 
-function Plots.scatter(
-	data::MovingGaussianMixture, what=:M;
-	title::Union{Missing, AbstractString}=missing, markersize=.5, seriescolor=:deep,
-	shade=false, kwargs...
-	)
+@recipe function f(data::MovingGaussianMixture, what=:M; shade=false)
 	@assert what ∈ (:M, :Σ) "Don't know how to plot $what"
 	
 	mat = (what == :M) ? data.M : data.Σ
-	
-	if title === missing
-		title = "Moving gaussian mixture $(repr(data.key))"
+
+	markerstrokewidth --> 0
+	label --> ""
+
+	if shade
+		marker_z := data.P'
+		seriescolor --> :deep
 	end
-	
-	Plots.scatter(
-		data.dates, mat';
-		label="", title=title,
-		markerstrokewidth=0, markerstrokealpha=0, markersize=markersize,
-		marker_z=(shade ? data.P' : nothing),
-		seriescolor=(shade ? seriescolor : :auto),
-		kwargs...
-	)
+
+	data.dates, mat'
 end

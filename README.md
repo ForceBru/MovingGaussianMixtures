@@ -21,22 +21,22 @@ Estimate 1D finite Gaussian mixture models in Julia.
 
 ## Example
 
-For code, see [example.jl](example.jl).
+For code, see [tests](test/).
 
 ### Estimation with k-means
 
-![kmeans](img/mixture_kmeans.png)
+![kmeans](test/img/mixture_kmeans.png)
 
 ### Estimation with EM
 
-![em](img/mixture_em.png)
+![em](test/img/mixture_em.png)
 
 ### Dynamic estimation
 
 Colors represent ID of component:
 
-![dynamic_em](img/running_em.png)
+![dynamic_em](test/img/running_em.png)
 
 Colors represent weights of components:
 
-![dynamic_em_shaded](img/running_em_shaded.png)
+![dynamic_em_shaded](test/img/running_em_shaded.png)
