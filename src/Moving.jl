@@ -1,3 +1,5 @@
+export MovingGaussianMixture, MGMKey, em
+
 using Dates, HDF5
 
 """
