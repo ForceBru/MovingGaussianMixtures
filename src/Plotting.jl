@@ -47,7 +47,7 @@ Plot kernel density estimate.
 
 		@series begin
 			label := label
-			fontfamily := "monospace"
+			fontfamily --> "monospace"
 
 			x, pdf_
 		end
@@ -55,8 +55,8 @@ Plot kernel density estimate.
 
 	# Plot full KDE
 	@series begin
-		label --> "KDE"
-		fontfamily := "monospace"
+		label --> "KDE ($(est.algorithm))"
+		fontfamily --> "monospace"
 		linewidth := 2
 
 		x, kde
@@ -68,7 +68,9 @@ end
 	@assert what ∈ (:M, :Σ) "Don't know how to plot $what"
 	
 	mat = (what == :M) ? data.M : data.Σ
+	n_components = size(data.P, 1)
 
+	title --> "Moving Gaussian mixture\n(components: $n_components, algo: $(data.algorithm))"
 	markerstrokewidth --> 0
 	label --> ""
 
