@@ -39,4 +39,4 @@ Colors represent ID of component:
 
 Colors represent weights of components:
 
-![dynamic_em_shaded](test/img/running_em_shaded.png)
+![dynamic_em_shaded](test/img/running_shaded.png)
