@@ -126,7 +126,7 @@ function Base.write(fid::HDF5.File, data::MovingGaussianMixture)
 end
 
 """
-    Base.read(fid::HDF5.File, ::Type{MovingGaussianMixture}, group_name::Union{Missing, AbstractString}=missing)::MovingGaussianMixture
+    Base.read(fid::HDF5.File, ::Type{MovingGaussianMixture}, group_name::Union{Missing, AbstractString}=missing; parse_dates=true)::MovingGaussianMixture
 
 Read `MovingGaussianMixture` from an open HDF5 file
 """
