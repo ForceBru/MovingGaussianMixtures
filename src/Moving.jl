@@ -52,6 +52,7 @@ Struct that holds the MGM results.
 `P`, `M` and `Σ` are (`n_components` by `length(dates)`) matrices with columns stored in the same order as the `dates`.
 """
 struct MovingGaussianMixture{T <: Real, D <: Union{DateTime, Number}}
+	algorithm::String
 	key::MGMKey
 	
 	dates::Vector{D}
@@ -60,6 +61,7 @@ struct MovingGaussianMixture{T <: Real, D <: Union{DateTime, Number}}
 	Σ::Matrix{T}
 
 	function MovingGaussianMixture(
+		algo::String,
 		key::MGMKey, dates::Vector{D},
 		P::Matrix{T}, M::Matrix{T}, Σ::Matrix{T}
 	) where {T <: Real, D <: Union{DateTime, Number}}
@@ -67,17 +69,19 @@ struct MovingGaussianMixture{T <: Real, D <: Union{DateTime, Number}}
 		@assert key.k == size(P, 1)
 		@assert length(dates) == size(P, 2)
 		
-		new{T, D}(key, dates, P, M, Σ)
+		new{T, D}(algo, key, dates, P, M, Σ)
 	end
 end
 
 function MovingGaussianMixture(
+	algo::String,
 	win_size::UInt, step_size::UInt, dates::Vector{D},
 	P::Matrix{T}, M::Matrix{T}, Σ::Matrix{T}
 ) where {T <: Real, D <: Union{DateTime, Number}}
 	k = size(P, 1)
 		
 	MovingGaussianMixture(
+		algo,
 		MGMKey(k, win_size, step_size),
 		dates, P, M, Σ
 	)
@@ -85,7 +89,7 @@ end
 
 function _write_data(
 	fid::HDF5.File,
-	grp_name::AbstractString, dates::AbstractVector{T},
+	grp_name::AbstractString, algo::String, dates::AbstractVector{T},
 	P::AbstractMatrix, M::AbstractMatrix, Σ::AbstractMatrix
 ) where T <: Union{Number, AbstractString}
 	g = try
@@ -99,6 +103,7 @@ function _write_data(
 		create_group(fid, grp_name)
 	end
 	
+	write(g, "algorithm", algo)
 	write(g, "dates", dates)
 	write(g, "P", P)
 	write(g, "M", M)
@@ -112,12 +117,12 @@ Write `MovingGaussianMixture` to an open HDF5 file.
 """
 function Base.write(fid::HDF5.File, data::MovingGaussianMixture{T, D}) where {T, D <: DateTime}
 	grp_name = repr(MIME("text/plain"), data.key)
-	_write_data(fid, grp_name, datetime2unix.(data.dates), data.P, data.M, data.Σ)
+	_write_data(fid, grp_name, data.algorithm, datetime2unix.(data.dates), data.P, data.M, data.Σ)
 end
 
 function Base.write(fid::HDF5.File, data::MovingGaussianMixture)
 	grp_name = repr(MIME("text/plain"), data.key)
-	_write_data(fid, grp_name, data.dates, data.P, data.M, data.Σ)
+	_write_data(fid, grp_name, data.algorithm, data.dates, data.P, data.M, data.Σ)
 end
 
 """
@@ -139,8 +144,14 @@ function Base.read(
 	end
 
 	g = fid[group_name]
+	algo_name = try
+		read(g["algorithm"])
+	catch x
+		"<UNKNOWN ALGORITHM>"
+	end
 
 	MovingGaussianMixture(
+		algo_name,
 		parse(MGMKey, group_name),
 		parse_dates ? unix2datetime.(read(g["dates"])) : read(g["dates"]),
 		read(g["P"]), read(g["M"]), read(g["v"])
@@ -154,23 +165,11 @@ Read `MovingGaussianMixture` from an open HDF5 file by group key
 """
 Base.read(fid::HDF5.File, typ::Type{MovingGaussianMixture}, group_key::MGMKey) = read(fid, typ, repr(group_key))
 
-"""
-    em(
-		x::AbstractVector{T}, dates::AbstractVector{DateTime}, k::UInt, win_size::UInt;
-		step_size::UInt=UInt(5), tol::T=3e-4, verbose::Integer=1000
-    ) where T <: Real
-
-Moving Separation of Mixtures algorithm.
-
-- `x` - input data
-- `dates` - dates at which the given data points were recorded
-- `k` - number of mixture components
-- `win_size` - length of the sliding window
-- `step_size` - step between windows
-"""
-function em(
-		x::AbstractVector{T}, dates::AbstractVector{D}, k::UInt, win_size::UInt;
-		step_size::UInt=UInt(5), verbose::Integer=1000, kwargs...
+"Moving Separation of Mixtures algorithm"
+function run_MSM(
+	estimator!,
+	x::AbstractVector{T}, dates::AbstractVector{D}, k::UInt, win_size::UInt,
+	step_size::UInt, verbose::Integer; kwargs...
 )::MovingGaussianMixture{T} where {T <: Real, D <: Union{DateTime, Number}}
 	@assert size(dates) == size(x)
 	
@@ -179,15 +178,17 @@ function em(
 	M = Matrix{T}(undef, k, the_range_length)
 	Σ = Matrix{T}(undef, k, the_range_length)
 	P = Matrix{T}(undef, k, the_range_length)
+	algo_name = ""
 
 	data = GaussianMixture(x[1:win_size], k)
 	
-	# CANNOT parallelize this since `em!` is modifying state!
+	# CANNOT parallelize this since `estimator!` is modifying state!
 	for (i, off) ∈ enumerate(the_range)
 		left, right = off - win_size + 1, off
 
 		win = @view x[left:right]
-		estimate = sort(em!(data, win; kwargs...))
+		estimate = sort(estimator!(data, win; kwargs...))
+		algo_name = estimate.algorithm
 
 		P[:, i] .= estimate.p
 		M[:, i] .= estimate.μ
@@ -198,12 +199,61 @@ function em(
 		end
 	end
 
-	MovingGaussianMixture(win_size, step_size, dates[the_range], P, M, Σ)
+	MovingGaussianMixture(algo_name, win_size, step_size, dates[the_range], P, M, Σ)
 end
 
-function em(
-		x::AbstractVector{T}, k::UInt, win_size::UInt;
+"""
+    em(
+		x::AbstractVector{T}, dates::AbstractVector{D}, k::UInt, win_size::UInt;
 		step_size::UInt=UInt(5), verbose::Integer=1000, kwargs...
+    ) where {T <: Real, D <: Union{DateTime, Number}}
+
+Moving Separation of Mixtures algorithm using EM.
+
+- `x` - input data
+- `dates` - dates at which the given data points were recorded
+- `k` - number of mixture components
+- `win_size` - length of the sliding window
+- `step_size` - step between windows
+- `kwargs...` - passed to `em!`
+"""
+function moving_em(
+		x::AbstractVector{T}, dates::AbstractVector{D}, k::UInt, win_size::UInt;
+		step_size::UInt=UInt(5), verbose::Integer=1000, kwargs...
+) where {T <: Real, D <: Union{DateTime, Number}}
+	run_MSM(em!, x, dates, k, win_size, step_size, verbose; kwargs...)
+end
+
+"""
+    kmeans(
+		x::AbstractVector{T}, dates::AbstractVector{D}, k::UInt, win_size::UInt;
+		step_size::UInt=UInt(5), verbose::Integer=1000, kwargs...
+    ) where {T <: Real, D <: Union{DateTime, Number}}
+
+Moving Separation of Mixtures algorithm using EM.
+
+- `x` - input data
+- `dates` - dates at which the given data points were recorded
+- `k` - number of mixture components
+- `win_size` - length of the sliding window
+- `step_size` - step between windows
+- `kwargs...` - passed to `kmeans!`
+"""
+function moving_kmeans(
+		x::AbstractVector{T}, dates::AbstractVector{D}, k::UInt, win_size::UInt;
+		step_size::UInt=UInt(5), verbose::Integer=1000, kwargs...
+) where {T <: Real, D <: Union{DateTime, Number}}
+	run_MSM(kmeans!, x, dates, k, win_size, step_size, verbose; kwargs...)
+end
+
+function moving_em(
+		x::AbstractVector{T}, k::UInt, win_size::UInt; kwargs...
 )::MovingGaussianMixture{T} where T <: Real
-	em(x, collect(1:length(x)), k, win_size; step_size=step_size, verbose=verbose, kwargs...)
+	moving_em(x, collect(1:length(x)), k, win_size; kwargs...)
+end
+
+function moving_kmeans(
+		x::AbstractVector{T}, k::UInt, win_size::UInt; kwargs...
+)::MovingGaussianMixture{T} where T <: Real
+	moving_kmeans(x, collect(1:length(x)), k, win_size; kwargs...)
 end
