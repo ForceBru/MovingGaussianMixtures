@@ -36,14 +36,22 @@ savefig(plt, "img/mixture_em.png")
 
 DISPLAY && do_display()
 
-@info "Running MGM..."
-ret_mov = MovingGaussianMixtures.em(sample_data, N_COMPONENTS, WINDOW_SIZE, step_size=UInt(1))
-plt = scatter(ret_mov, markersize=2, alpha=.5)
+@info "Running MGM (kmeans)..."
+ret_mov_kmeans = MovingGaussianMixtures.moving_kmeans(sample_data, N_COMPONENTS, WINDOW_SIZE, step_size=UInt(1))
+plt = scatter(ret_mov_kmeans, markersize=2, alpha=.5)
+savefig(plt, "img/running_kmeans.png")
+
+plt = scatter(ret_mov_kmeans, markersize=2, alpha=.8, shade=true)
+savefig(plt, "img/running_kmeans_shaded.png")
+
+@info "Running MGM (EM)..."
+ret_mov_em = MovingGaussianMixtures.moving_em(sample_data, N_COMPONENTS, WINDOW_SIZE, step_size=UInt(1))
+plt = scatter(ret_mov_em, markersize=2, alpha=.5)
 savefig(plt, "img/running_em.png")
 
-@info "Saving data to $OUT_FILE..."
+@info "Saving moving EM data to $OUT_FILE..."
 h5open(OUT_FILE, "w") do fid
-	write(fid, ret_mov)
+	write(fid, ret_mov_em)
 end
 @info "Data saved!"
 
