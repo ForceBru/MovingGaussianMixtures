@@ -18,35 +18,33 @@ function do_display(last=false)
 	end
 end
 
+const PLOT_SIZE = (800 * 1.5, 800)
 const N_COMPONENTS = UInt(7)
 const WINDOW_SIZE = UInt(10)
 const OUT_FILE = "sample_results.h5"
 
 @info "Estimating with k-means..."
 ret_kmeans = MovingGaussianMixtures.kmeans(sample_data, N_COMPONENTS)
-plt = plot(ret_kmeans, sample_data)
+plt = plot(ret_kmeans, sample_data, size=PLOT_SIZE)
 savefig(plt, "img/mixture_kmeans.png")
 
 DISPLAY && do_display()
 
 @info "Estimating with EM..."
 ret_em = MovingGaussianMixtures.em(sample_data, N_COMPONENTS)
-plt = plot(ret_em, sample_data)
+plt = plot(ret_em, sample_data, size=PLOT_SIZE)
 savefig(plt, "img/mixture_em.png")
 
 DISPLAY && do_display()
 
 @info "Running MGM (kmeans)..."
 ret_mov_kmeans = MovingGaussianMixtures.moving_kmeans(sample_data, N_COMPONENTS, WINDOW_SIZE, step_size=UInt(1))
-plt = scatter(ret_mov_kmeans, markersize=2, alpha=.5)
+plt = scatter(ret_mov_kmeans, markersize=4, alpha=.5, size=PLOT_SIZE)
 savefig(plt, "img/running_kmeans.png")
-
-plt = scatter(ret_mov_kmeans, markersize=2, alpha=.8, shade=true)
-savefig(plt, "img/running_kmeans_shaded.png")
 
 @info "Running MGM (EM)..."
 ret_mov_em = MovingGaussianMixtures.moving_em(sample_data, N_COMPONENTS, WINDOW_SIZE, step_size=UInt(1))
-plt = scatter(ret_mov_em, markersize=2, alpha=.5)
+plt = scatter(ret_mov_em, markersize=4, alpha=.5, size=PLOT_SIZE)
 savefig(plt, "img/running_em.png")
 
 @info "Saving moving EM data to $OUT_FILE..."
@@ -62,8 +60,9 @@ end
 @info "Data read!"
 
 @info "Plotting data from $OUT_FILE..."
-plt = scatter(ret_read, markersize=2, alpha=.8, shade=true)
-savefig(plt, "img/running_em_shaded.png")
+plt_em = scatter(ret_read, markersize=2, alpha=.8, shade=true)
+plt_kmeans = scatter(ret_mov_kmeans, markersize=2, alpha=.8, shade=true)
+savefig(plot(plt_em, plt_kmeans, size=PLOT_SIZE), "img/running_shaded.png")
 
 DISPLAY && do_display(true)
 
