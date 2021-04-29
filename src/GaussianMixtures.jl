@@ -111,17 +111,18 @@ Stores estimates:
 - `σ` - standard deviations of components;
 """
 struct GaussianMixtureEstimate{k, T <: Real}
+	algorithm::String
 	n_iter::UInt
 
 	p::MVector{k, T}
 	μ::MVector{k, T}
 	σ::MVector{k, T}
 
-	function GaussianMixtureEstimate(n_iter::UInt, p::AbstractVector{T}, μ::AbstractVector{T}, σ::AbstractVector{T}) where T <: Real
+	function GaussianMixtureEstimate(algo::String, n_iter::UInt, p::AbstractVector{T}, μ::AbstractVector{T}, σ::AbstractVector{T}) where T <: Real
 		@assert length(p) == length(μ) == length(σ)
 
 		k = length(p)
-		new{k, T}(n_iter, MVector{k, T}(p), MVector{k, T}(μ), MVector{k, T}(σ))
+		new{k, T}(algo, n_iter, MVector{k, T}(p), MVector{k, T}(μ), MVector{k, T}(σ))
 	end
 end
 
@@ -137,7 +138,7 @@ function Base.sort(est::GaussianMixtureEstimate{k, T}; by=:μ, rev=true) where {
 	)
 
 	GaussianMixtureEstimate(
-		est.n_iter,
+		est.algorithm, est.n_iter,
 		est.p[order], est.μ[order], est.σ[order]
 	)
 end
@@ -156,11 +157,14 @@ log_likelihood(x, est::GaussianMixtureEstimate{k, T}) where {k, T} = log_likelih
 Fit gaussian mixture model with `k` components to data in `x` using k-means.
 Used mainly as initialization for EM.
 """
-function kmeans!(data::GaussianMixture{k, T}, x::AbstractVector{T}, n_steps::Unsigned; eps=EPS, raw=false) where {k, T <: Real}
+function kmeans!(
+	data::GaussianMixture{k, T}, x::AbstractVector{T}; maxiter::Unsigned=UInt(50), eps=EPS, metric=metric_l1,
+	raw=false
+) where {k, T <: Real}
 	p, μ, σ = get_pμσ(data.θ)
 	p_tmp, μ_tmp, σ_tmp = get_pμσ(data.θ_tmp)
 
-	for _ ∈ 1:n_steps
+	for _ ∈ 1:maxiter
 		@. data.probs = μ_tmp = σ_tmp = zero(T)
 
 		@inbounds for x_ ∈ x
@@ -197,11 +201,8 @@ function kmeans!(data::GaussianMixture{k, T}, x::AbstractVector{T}, n_steps::Uns
 		clamp!(σ, eps, Inf)
 	end
 
-	if raw
-		(n_steps, p, μ, σ, p_tmp, μ_tmp, σ_tmp)
-	else
-		GaussianMixtureEstimate(n_steps, p, μ, σ)
-	end
+	(raw ? (maxiter, p, μ, σ, p_tmp, μ_tmp, σ_tmp)
+	    : GaussianMixtureEstimate("KMeans", maxiter, p, μ, σ))
 end
 
 """
@@ -220,7 +221,7 @@ function em!(
 		tol::T=3e-4, maxiter::Unsigned=UInt(500), eps=EPS, kmeans_steps::Unsigned=UInt(4), metric=metric_l1, raw=false
 	) where {k, T <: Real}
     # All of these are "pointers" into `θ`
-	_, p, μ, σ, p_tmp, μ_tmp, σ_tmp = kmeans!(data, x, kmeans_steps; raw=true)
+	_, p, μ, σ, p_tmp, μ_tmp, σ_tmp = kmeans!(data, x; maxiter=kmeans_steps, raw=true)
 
 	i = UInt(0)
 	while (i == 0 || metric(data.θ, data.θ_old) > tol) && (i < maxiter)
@@ -262,11 +263,7 @@ function em!(
 		i += 1
 	end
 	
-	if raw
-		(i, p, μ, σ)
-	else
-		GaussianMixtureEstimate(i, p, μ, σ)
-	end
+	raw ? (i, p, μ, σ) : GaussianMixtureEstimate("EM", i, p, μ, σ)
 end
 
 """
@@ -291,4 +288,4 @@ Fit gaussian mixture model with `k` components to data in `x` using k-means.
 - `n_steps` - number of k-mens steps
 - For keyword arguments see `em!`
 """
-kmeans(x::AbstractVector, k::Integer, n_steps::Unsigned=UInt(20); kwargs...) = kmeans!(GaussianMixture(x, UInt(k)), x, n_steps; raw=false, kwargs...)
+kmeans(x::AbstractVector, k::Integer, n_steps::Unsigned=UInt(20); kwargs...) = kmeans!(GaussianMixture(x, UInt(k)), x; maxiter=n_steps, kwargs...)
