@@ -190,6 +190,7 @@ function kmeans!(
 		# We'll divide by `data.probs` later,
         # so make sure there are no zeros
         clamp!(data.probs, eps, Inf)
+        clamp!(σ_tmp, eps, Inf)
 
         # Probabilities to choose each mixture component
 		p .= data.probs ./ sum(data.probs)
@@ -197,8 +198,6 @@ function kmeans!(
         # Update centers and standard deviations of mixture components
 		@. μ = μ_tmp / data.probs
 		@. σ = sqrt(σ_tmp / data.probs)
-		
-		clamp!(σ, eps, Inf)
 	end
 
 	(raw ? (maxiter, p, μ, σ, p_tmp, μ_tmp, σ_tmp)
@@ -250,6 +249,9 @@ function em!(
         # We'll divide by `data.probs` later,
         # so make sure there are no zeros
         clamp!(data.probs, eps, Inf)
+        # `σ_tmp` are actually variances;
+        # they must not be zero
+        clamp!(σ_tmp, eps, Inf)
 
         # Probabilities to choose each mixture component
 		p .= data.probs ./ sum(data.probs)
@@ -257,8 +259,6 @@ function em!(
         # Update centers and standard deviations of mixture components
 		@. μ = μ_tmp / data.probs
 		@. σ = sqrt(σ_tmp / data.probs)
-
-		clamp!(σ, eps, Inf)
 		
 		i += 1
 	end
