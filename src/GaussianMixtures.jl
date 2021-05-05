@@ -217,13 +217,15 @@ will converge too quickly in high dimensions (curse of dimensionality?)
 """
 function em!(
 		data::GaussianMixture{k, T}, x::AbstractVector{T};
-		tol::T=3e-4, maxiter::Unsigned=UInt(500), eps=EPS, kmeans_steps::Unsigned=UInt(4), metric=metric_l1, raw=false
+		tol::T=3e-4, maxiter::Unsigned=UInt(500), eps=EPS, kmeans_steps::Unsigned=UInt(4), metric::Union{Missing, Function}=missing, raw=false
 	) where {k, T <: Real}
     # All of these are "pointers" into `θ`
 	_, p, μ, σ, p_tmp, μ_tmp, σ_tmp = kmeans!(data, x; maxiter=kmeans_steps, raw=true)
 
+	lik_old = metric === missing ? log_likelihood(x, p, μ, σ) : missing
+
 	i = UInt(0)
-	while (i == 0 || metric(data.θ, data.θ_old) > tol) && (i < maxiter)
+	while i < maxiter
 		@. data.probs = μ_tmp = σ_tmp = zero(T)
 		
 		@. data.pσ = p / σ
@@ -244,7 +246,9 @@ function em!(
 			data.probs .+= data.probs_tmp
 		end
 		
-		data.θ_old .= data.θ
+		if metric !== missing
+			data.θ_old .= data.θ
+		end
 		
         # We'll divide by `data.probs` later,
         # so make sure there are no zeros
@@ -261,6 +265,15 @@ function em!(
 		@. σ = sqrt(σ_tmp / data.probs)
 		
 		i += 1
+		should_stop = if metric === missing
+			lik_new = log_likelihood(x, p, μ, σ)
+
+			abs(lik_new - lik_old) < tol
+		else
+			metric(data.θ_old, θ)
+		end
+
+		should_stop && break
 	end
 	
 	raw ? (i, p, μ, σ) : GaussianMixtureEstimate("EM", i, p, μ, σ)
