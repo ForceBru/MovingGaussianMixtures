@@ -1,4 +1,4 @@
-export MovingGaussianMixture, MGMKey, em
+export MovingGaussianMixture, MGMKey, moving_em, moving_kmeans
 
 using Dates, HDF5
 
