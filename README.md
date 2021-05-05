@@ -13,11 +13,12 @@ Estimate 1D finite Gaussian mixture models in Julia.
 
 ### Dynamic estimation
 
-- `em(x::AbstractVector{T}, k::UInt, win_size::UInt; step_size::UInt=UInt(5), verbose::Integer=1000, kwargs...)` - fit mixture model with `k` components on each subinterval of length `win_size`. Each new window is shified forward by `step_size` elements of `x`. Like rolling mean or rolling standard deviation, but with EM.
+- `moving_kmeans(x::AbstractVector{T}, k::UInt, win_size::UInt; kwargs...)` - fit mixture model with `k` components on each subinterval of length `win_size`. Each new window is shified forward by `step_size` elements of `x`. Like rolling mean or rolling standard deviation, but with k-means.
+- `moving_em(x::AbstractVector{T}, k::UInt, win_size::UInt; kwargs...)` - like `moving_kmeans` but with EM.
 
 ### Plotting
 
-`kmeans` and `em` return data that can be plotted with Plots.jl, namely, with `plot` and `scatter` (the latter is for dynamic estimation only).
+`kmeans`, `em` and their `moving_*` variants return data that can be plotted with Plots.jl, namely, with `plot` and `scatter` (the latter is for dynamic estimation only).
 
 ## Example
 
