@@ -1,7 +1,7 @@
 using DelimitedFiles
 using Plots, HDF5
 
-import MovingGaussianMixtures
+using MovingGaussianMixtures
 
 sample_data = readdlm("sample_data.csv")[:, 1]
 
@@ -24,26 +24,28 @@ const WINDOW_SIZE = UInt(10)
 const OUT_FILE = "sample_results.h5"
 
 @info "Estimating with k-means..."
-ret_kmeans = MovingGaussianMixtures.kmeans(sample_data, N_COMPONENTS)
-plt = plot(ret_kmeans, sample_data, size=PLOT_SIZE)
+ret_kmeans = kmeans(sample_data, N_COMPONENTS)
+lik = log_likelihood(sample_data, ret_kmeans)
+plt = plot(ret_kmeans, sample_data, size=PLOT_SIZE, title="Log-likelihood: $lik")
 savefig(plt, "img/mixture_kmeans.png")
 
 DISPLAY && do_display()
 
 @info "Estimating with EM..."
-ret_em = MovingGaussianMixtures.em(sample_data, N_COMPONENTS)
-plt = plot(ret_em, sample_data, size=PLOT_SIZE)
+ret_em = em(sample_data, N_COMPONENTS)
+lik = log_likelihood(sample_data, ret_em)
+plt = plot(ret_em, sample_data, size=PLOT_SIZE, title="Log-likelihood: $lik")
 savefig(plt, "img/mixture_em.png")
 
 DISPLAY && do_display()
 
 @info "Running MGM (kmeans)..."
-ret_mov_kmeans = MovingGaussianMixtures.moving_kmeans(sample_data, N_COMPONENTS, WINDOW_SIZE, step_size=UInt(1))
+ret_mov_kmeans = moving_kmeans(sample_data, N_COMPONENTS, WINDOW_SIZE, step_size=UInt(1))
 plt = scatter(ret_mov_kmeans, markersize=4, alpha=.5, size=PLOT_SIZE)
 savefig(plt, "img/running_kmeans.png")
 
 @info "Running MGM (EM)..."
-ret_mov_em = MovingGaussianMixtures.moving_em(sample_data, N_COMPONENTS, WINDOW_SIZE, step_size=UInt(1))
+ret_mov_em = moving_em(sample_data, N_COMPONENTS, WINDOW_SIZE, step_size=UInt(1))
 plt = scatter(ret_mov_em, markersize=4, alpha=.5, size=PLOT_SIZE)
 savefig(plt, "img/running_em.png")
 
