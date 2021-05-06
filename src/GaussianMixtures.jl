@@ -3,7 +3,7 @@ using LinearAlgebra: norm
 using Statistics: quantile
 using StaticArrays
 
-export log_likelihood, GaussianMixture, GaussianMixtureEstimate, kmeans, em
+export log_likelihood, GaussianMixture, GaussianMixtureEstimate, kmeans, em, kmeans!, em!
 
 const EPS = 1e-10
 
