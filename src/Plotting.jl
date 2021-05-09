@@ -43,7 +43,7 @@ Plot kernel density estimate.
 		pdf_ = p .* pdf(x, μ, σ)
 		kde .+= pdf_
 
-		label = i <= 5 ? @sprintf("p=%.2f μ=% .3f σ=%.3f", p, μ, σ) : ""
+		label = i <= 5 ? @sprintf("p=%.2e μ=% .3e σ=%.3e", p, μ, σ) : ""
 
 		@series begin
 			label := label
@@ -64,7 +64,10 @@ Plot kernel density estimate.
 end
 
 
-@recipe function f(data::MovingGaussianMixture, what=:M; shade=false)
+# Recepies don't support type signatures
+@recipe function f(data::MovingGaussianMixture, what::Symbol=:M; shade=missing)
+	@assert typeof(shade) <: Union{Missing, Symbol}
+	@assert typeof(what) <: Symbol
 	@assert what ∈ (:M, :Σ) "Don't know how to plot $what"
 	
 	mat = (what == :M) ? data.M : data.Σ
@@ -74,9 +77,20 @@ end
 	markerstrokewidth --> 0
 	label --> ""
 
-	if shade
-		marker_z := data.P'
-		seriescolor --> :deep
+	if shade !== missing
+		if shade == :P
+			seriescolor --> :deep
+		end
+
+		if what == :M
+			@assert shade ∈ (:P, :Σ)
+			marker_z := (shade == :P) ? data.P' : data.Σ'
+		elseif what == :Σ
+			@assert shade ∈ (:P, :M)
+			marker_z := (shade == :P) ? data.P' : data.M'
+		else
+			error("Got `what == $what`, which is a bug")
+		end
 	end
 
 	data.dates, mat'
