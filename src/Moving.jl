@@ -203,7 +203,7 @@ function run_MSM(
 end
 
 """
-    em(
+    moving_em(
 		x::AbstractVector{T}, dates::AbstractVector{D}, k::UInt, win_size::UInt;
 		step_size::UInt=UInt(5), verbose::Integer=1000, kwargs...
     ) where {T <: Real, D <: Union{DateTime, Number}}
@@ -225,7 +225,7 @@ function moving_em(
 end
 
 """
-    kmeans(
+    moving_kmeans(
 		x::AbstractVector{T}, dates::AbstractVector{D}, k::UInt, win_size::UInt;
 		step_size::UInt=UInt(5), verbose::Integer=1000, kwargs...
     ) where {T <: Real, D <: Union{DateTime, Number}}
