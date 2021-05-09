@@ -10,6 +10,8 @@ sample_data = readdlm("sample_data.csv")[:, 1]
 
 # Don't automatically show plots
 default(show=false)
+ENV["GKSwstype"]="nul"
+gr()
 
 const PLOT_SIZE = (800 * 1.5, 800)
 const N_COMPONENTS = UInt(7)
@@ -76,8 +78,8 @@ end
 			read(fid, MovingGaussianMixtures.MovingGaussianMixture, parse_dates=false)
 		end
 		ret_mov_kmeans = moving_kmeans(sample_data, N_COMPONENTS, WINDOW_SIZE, step_size=UInt(1))
-		plt_em = scatter(ret_read, markersize=2, alpha=.8, shade=true)
-		plt_kmeans = scatter(ret_mov_kmeans, markersize=2, alpha=.8, shade=true)
+		plt_em = scatter(ret_read, markersize=2, alpha=.8, shade=:P)
+		plt_kmeans = scatter(ret_mov_kmeans, markersize=2, alpha=.8, shade=:P)
 		savefig(plot(plt_em, plt_kmeans, size=PLOT_SIZE), "img/running_shaded.png")
 		true
 	end
@@ -87,6 +89,7 @@ end
 	@test let
 		@info "Benchmarking EM..."
 		data = GaussianMixture(sample_data, UInt(20))
+		@show Int(em!(data, sample_data).n_iter)
 		b_data = @benchmark em!($data, $sample_data)
 		show(stdout, "text/plain", b_data)
 		println()
