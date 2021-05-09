@@ -267,8 +267,10 @@ function em!(
 		i += 1
 		should_stop = if metric === missing
 			lik_new = log_likelihood(x, p, μ, σ)
+			ret = abs(lik_new - lik_old) < tol
+			lik_old = lik_new
 
-			abs(lik_new - lik_old) < tol
+			ret
 		else
 			metric(data.θ_old, θ)
 		end
