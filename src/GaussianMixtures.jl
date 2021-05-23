@@ -3,6 +3,8 @@ using LinearAlgebra: norm
 using Statistics: quantile
 using StaticArrays
 
+using LoopVectorization
+
 export log_likelihood, GaussianMixture, GaussianMixtureEstimate, kmeans, em, kmeans!, em!
 
 const EPS = 1e-10
@@ -11,7 +13,7 @@ const EPS = 1e-10
 @inline ϕ(x::Number) = exp(-x^2 / 2) / sqrt(2π)
 
 "Density of mixture component (unweighted)"
-@inline pdf(x::AbstractVector, μ::Number, σ::Number) = @. ϕ((x - μ) / σ) / σ
+@inline pdf(x::AbstractVector, μ::Number, σ::Number) = @avx @. ϕ((x - μ) / σ) / σ
 
 """
     log_likelihood(x, p, μ, σ)
@@ -224,7 +226,9 @@ function em!(
 
 	lik_old = metric === missing ? log_likelihood(x, p, μ, σ) : missing
 
-	i = UInt(0)
+	i = UInt64(0)
+	n_consecutive_retries = UInt64(0)
+	max_consecutive_retries = UInt(200)
 	while i < maxiter
 		@. data.probs = μ_tmp = σ_tmp = zero(T)
 		
@@ -253,9 +257,6 @@ function em!(
         # We'll divide by `data.probs` later,
         # so make sure there are no zeros
         clamp!(data.probs, eps, Inf)
-        # `σ_tmp` are actually variances;
-        # they must not be zero
-        clamp!(σ_tmp, eps, Inf)
 
         # Probabilities to choose each mixture component
 		p .= data.probs ./ sum(data.probs)
@@ -263,8 +264,25 @@ function em!(
         # Update centers and standard deviations of mixture components
 		@. μ = μ_tmp / data.probs
 		@. σ = sqrt(σ_tmp / data.probs)
-		
+
+		mask = σ .≈ zero(T)
+		n_zeros = sum(mask)
+		if n_zeros != 0
+			if n_consecutive_retries == max_consecutive_retries
+				@warn "Max number of consecutive retries ($max_consecutive_retries) exceeded on iteration $i"
+				break
+			end
+
+			σ[mask] .= 1 / eps # HUGE standard deviation
+			μ[mask] .= randn(n_zeros)
+
+			n_consecutive_retries += 1
+			continue
+		end
+
+		n_consecutive_retries = UInt64(0)
 		i += 1
+
 		should_stop = if metric === missing
 			lik_new = log_likelihood(x, p, μ, σ)
 			ret = abs(lik_new - lik_old) < tol
