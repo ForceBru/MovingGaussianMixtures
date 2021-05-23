@@ -150,10 +150,12 @@ function Base.read(
 		"<UNKNOWN ALGORITHM>"
 	end
 
+	dates = read(g["dates"])
+
 	MovingGaussianMixture(
 		algo_name,
 		parse(MGMKey, group_name),
-		parse_dates ? unix2datetime.(read(g["dates"])) : read(g["dates"]),
+		parse_dates ? unix2datetime.(dates) : dates,
 		read(g["P"]), read(g["M"]), read(g["v"])
 	)
 end
@@ -166,14 +168,35 @@ Read `MovingGaussianMixture` from an open HDF5 file by group key
 Base.read(fid::HDF5.File, typ::Type{MovingGaussianMixture}, group_key::MGMKey) = read(fid, typ, repr(group_key))
 
 """
-Moving Separation of Mixtures algorithm
+	function run_MSM(
+		estimator!,
+		x::AbstractVector{T}, dates::AbstractVector{D}, k::UInt, win_size::UInt,
+		step_size::UInt, verbose::Integer; reinit_kmeans::Bool=false, num_rep::UInt=UInt(1), kwargs...
+	)::MovingGaussianMixture{T} where {T <: Real, D}
+
+Moving Separation of Mixtures algorithm.
+
+- `estimator!` - the estimator to use, like `em!` or `kmeans!`
+- `x` - time series
+- `dates` - identifiers (possibly dates) for each data point
+- `k` - number of mixture components
+- `win_size` - length of the sliding window
+- `step_size` - each new window will begin `step_size` data points
+	from the beginning of the previous window
+- `verbose` - print statistics each `verbose` iteration
+- `reinit_kmeans` (internal) - re-calculate initial estimates with KMeans
+- `num_rep` - re-run estimation on _the same_ window `num_rep` times
+	and choose the set of estimates that result in greater log-likelihood;
+	useful when the estimation procedure involves randomness
+- `kwargs...` - forwarded to `estimator!`
 """
 function run_MSM(
 	estimator!,
-	x::AbstractVector{T}, dates::AbstractVector{D}, k::UInt, win_size::UInt,
-	step_size::UInt, verbose::Integer; reinit_kmeans::Bool=false, kwargs...
+	x::AbstractVector{T}, dates::AbstractVector{D}, k::Unsigned, win_size::Unsigned,
+	step_size::Unsigned, verbose::Integer; reinit_kmeans::Bool=false, num_rep::Unsigned=UInt(1), kwargs...
 )::MovingGaussianMixture{T} where {T <: Real, D}
 	@assert size(dates) == size(x)
+	@assert num_rep > 0
 	
 	the_range = win_size:step_size:length(x)
 	the_range_length = length(the_range)
@@ -189,15 +212,30 @@ function run_MSM(
 	algo_name = estimate.algorithm
 	
 	# CANNOT parallelize this since `estimator!` is modifying state!
-	for (i, off) ∈ enumerate(the_range)
+	@inbounds for (i, off) ∈ enumerate(the_range)
 		left, right = off - win_size + 1, off
 
 		win = @view x[left:right]
-		estimate = sort(estimator!(data, win; init_kmeans=reinit_kmeans, kwargs...))
 
+		estimate = sort(estimator!(data, win; init_kmeans=reinit_kmeans, kwargs...))
 		P[:, i] .= estimate.p
 		M[:, i] .= estimate.μ
 		Σ[:, i] .= estimate.σ
+
+		if estimate.n_retries > 0
+			# The algorithm was non-deterministic and probably failed to converge,
+			# so repeat and choose parameters that give best log-likelihood
+			for nrep in 1:(num_rep - 1)
+				estimate = sort(estimator!(data, win; init_kmeans=reinit_kmeans, kwargs...))
+
+				if log_likelihood(win, estimate) > log_likelihood(win, P[:, i], M[:, i], Σ[:, i])
+					# New likelihood is better => overwrite current results
+					P[:, i] .= estimate.p
+					M[:, i] .= estimate.μ
+					Σ[:, i] .= estimate.σ
+				end
+			end
+		end
 
 		if verbose > 0 && i % verbose == 0
 			@info @sprintf("%4d / %4d (%6.2f%%)", i, the_range_length, i / the_range_length * 100)
@@ -209,8 +247,8 @@ end
 
 """
     moving_em(
-		x::AbstractVector{T}, dates::AbstractVector{D}, k::UInt, win_size::UInt;
-		step_size::UInt=UInt(5), verbose::Integer=1000, kwargs...
+		x::AbstractVector{T}, dates::AbstractVector{D}, k::Unsigned, win_size::Unsigned;
+		step_size::Unsigned=UInt(5), verbose::Integer=1000, kwargs...
     ) where {T <: Real, D <: Union{DateTime, Number}}
 
 Moving Separation of Mixtures algorithm using EM.
@@ -223,16 +261,16 @@ Moving Separation of Mixtures algorithm using EM.
 - `kwargs...` - passed to `em!`
 """
 function moving_em(
-		x::AbstractVector{T}, dates::AbstractVector{D}, k::UInt, win_size::UInt;
-		step_size::UInt=UInt(5), verbose::Integer=1000, kwargs...
+		x::AbstractVector{T}, dates::AbstractVector{D}, k::Unsigned, win_size::Unsigned;
+		step_size::Unsigned=UInt(5), verbose::Integer=1000, num_rep::Unsigned=UInt(100), kwargs...
 ) where {T <: Real, D}
-	run_MSM(em!, x, dates, k, win_size, step_size, verbose; kwargs...)
+	run_MSM(em!, x, dates, k, win_size, step_size, verbose; num_rep=num_rep, kwargs...)
 end
 
 """
     moving_kmeans(
-		x::AbstractVector{T}, dates::AbstractVector{D}, k::UInt, win_size::UInt;
-		step_size::UInt=UInt(5), verbose::Integer=1000, kwargs...
+		x::AbstractVector{T}, dates::AbstractVector{D}, k::Unsigned, win_size::Unsigned;
+		step_size::Unsigned=UInt(5), verbose::Integer=1000, kwargs...
     ) where {T <: Real, D <: Union{DateTime, Number}}
 
 Moving Separation of Mixtures algorithm using EM.
@@ -245,20 +283,20 @@ Moving Separation of Mixtures algorithm using EM.
 - `kwargs...` - passed to `kmeans!`
 """
 function moving_kmeans(
-		x::AbstractVector{T}, dates::AbstractVector{D}, k::UInt, win_size::UInt;
-		step_size::UInt=UInt(5), verbose::Integer=1000, kwargs...
+		x::AbstractVector{T}, dates::AbstractVector{D}, k::Unsigned, win_size::Unsigned;
+		step_size::Unsigned=UInt(5), verbose::Integer=1000, kwargs...
 ) where {T <: Real, D}
 	run_MSM(kmeans!, x, dates, k, win_size, step_size, verbose; kwargs...)
 end
 
 function moving_em(
-		x::AbstractVector{T}, k::UInt, win_size::UInt; kwargs...
+		x::AbstractVector{T}, k::Unsigned, win_size::Unsigned; num_rep::Unsigned=UInt(100), kwargs...
 )::MovingGaussianMixture{T} where T <: Real
-	moving_em(x, collect(1:length(x)), k, win_size; kwargs...)
+	moving_em(x, collect(1:length(x)), k, win_size; num_rep=num_rep, kwargs...)
 end
 
 function moving_kmeans(
-		x::AbstractVector{T}, k::UInt, win_size::UInt; kwargs...
+		x::AbstractVector{T}, k::Unsigned, win_size::Unsigned; kwargs...
 )::MovingGaussianMixture{T} where T <: Real
 	moving_kmeans(x, collect(1:length(x)), k, win_size; kwargs...)
 end
