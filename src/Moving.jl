@@ -169,7 +169,7 @@ Base.read(fid::HDF5.File, typ::Type{MovingGaussianMixture}, group_key::MGMKey) =
 function run_MSM(
 	estimator!,
 	x::AbstractVector{T}, dates::AbstractVector{D}, k::UInt, win_size::UInt,
-	step_size::UInt, verbose::Integer; kwargs...
+	step_size::UInt, verbose::Integer; reinit_kmeans::Bool=false, kwargs...
 )::MovingGaussianMixture{T} where {T <: Real, D <: Union{DateTime, Number}}
 	@assert size(dates) == size(x)
 	
@@ -181,13 +181,18 @@ function run_MSM(
 	algo_name = ""
 
 	data = GaussianMixture(x[1:win_size], k)
+	init_kmeans = true
 	
 	# CANNOT parallelize this since `estimator!` is modifying state!
 	for (i, off) ∈ enumerate(the_range)
 		left, right = off - win_size + 1, off
 
 		win = @view x[left:right]
-		estimate = sort(estimator!(data, win; kwargs...))
+		estimate = sort(estimator!(data, win; init_kmeans=init_kmeans, kwargs...))
+		if !reinit_kmeans
+			init_kmeans = false
+		end
+
 		algo_name = estimate.algorithm
 
 		P[:, i] .= estimate.p
