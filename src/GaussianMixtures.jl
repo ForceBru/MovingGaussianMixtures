@@ -161,6 +161,7 @@ Used mainly as initialization for EM.
 """
 function kmeans!(
 	data::GaussianMixture{k, T}, x::AbstractVector{T}; maxiter::Unsigned=UInt(50), eps=EPS, metric=metric_l1,
+	init_kmeans=true, # exists ony for compatibility with `em!`
 	raw=false
 ) where {k, T <: Real}
 	p, μ, σ = get_pμσ(data.θ)
@@ -192,6 +193,8 @@ function kmeans!(
 		# We'll divide by `data.probs` later,
         # so make sure there are no zeros
         clamp!(data.probs, eps, Inf)
+
+        # `σ_tmp` are variances, so can't be zero
         clamp!(σ_tmp, eps, Inf)
 
         # Probabilities to choose each mixture component
@@ -219,16 +222,23 @@ will converge too quickly in high dimensions (curse of dimensionality?)
 """
 function em!(
 		data::GaussianMixture{k, T}, x::AbstractVector{T};
-		tol::T=3e-4, maxiter::Unsigned=UInt(500), eps=EPS, kmeans_steps::Unsigned=UInt(4), metric::Union{Missing, Function}=missing, raw=false
+		tol::T=3e-4, maxiter::Unsigned=UInt(500), eps=EPS, metric::Union{Missing, Function}=missing,
+		max_consecutive_retries = UInt(50),
+		init_kmeans::Bool=true, kmeans_steps::Unsigned=UInt(4),
+		raw::Bool=false
 	) where {k, T <: Real}
     # All of these are "pointers" into `θ`
-	_, p, μ, σ, p_tmp, μ_tmp, σ_tmp = kmeans!(data, x; maxiter=kmeans_steps, raw=true)
+	if init_kmeans
+		_, p, μ, σ, p_tmp, μ_tmp, σ_tmp = kmeans!(data, x; maxiter=kmeans_steps, raw=true)
+	else
+		p, μ, σ = get_pμσ(data.θ)
+		p_tmp, μ_tmp, σ_tmp = get_pμσ(data.θ_tmp)
+	end
 
 	lik_old = metric === missing ? log_likelihood(x, p, μ, σ) : missing
 
 	i = UInt64(0)
 	n_consecutive_retries = UInt64(0)
-	max_consecutive_retries = UInt(200)
 	while i < maxiter
 		@. data.probs = μ_tmp = σ_tmp = zero(T)
 		
@@ -237,17 +247,18 @@ function em!(
 			# These are basically the heights of each Gaussian at `x_`
 			# Loops are faster than `@. data.distances = data.pσ * ϕ((x_ - μ) / σ)`
 			the_sum = zero(T)
-			@inbounds for i ∈ 1:k
+			@avx for i ∈ 1:k
 				d = data.pσ[i] * ϕ((x_ - μ[i]) / σ[i])
 				the_sum += d
 				data.distances[i] = d
 			end
-			# Probabilities that `x_` belongs to each component
-			@. data.probs_tmp = data.distances / the_sum
 
-			@. μ_tmp += x_ * data.probs_tmp
-			@. σ_tmp += (x_ - μ)^2 * data.probs_tmp
-			data.probs .+= data.probs_tmp
+			# Probabilities that `x_` belongs to each component
+			@avx @. data.probs_tmp = data.distances / the_sum
+
+			@avx @. μ_tmp += x_ * data.probs_tmp
+			@avx @. σ_tmp += (x_ - μ)^2 * data.probs_tmp
+			@avx data.probs .+= data.probs_tmp
 		end
 		
 		if metric !== missing
@@ -256,19 +267,22 @@ function em!(
 		
         # We'll divide by `data.probs` later,
         # so make sure there are no zeros
-        clamp!(data.probs, eps, Inf)
+        @avx clamp!(data.probs, eps, Inf)
 
         # Probabilities to choose each mixture component
-		p .= data.probs ./ sum(data.probs)
+		@avx p .= data.probs ./ sum(data.probs)
 
         # Update centers and standard deviations of mixture components
-		@. μ = μ_tmp / data.probs
-		@. σ = sqrt(σ_tmp / data.probs)
+		@avx @. μ = μ_tmp / data.probs
+		@avx @. σ = sqrt(σ_tmp / data.probs)
 
 		mask = σ .≈ zero(T)
 		n_zeros = sum(mask)
 		if n_zeros != 0
 			if n_consecutive_retries == max_consecutive_retries
+				# Make sure σ is always valid!
+				clamp!(σ, eps, Inf)
+
 				@warn "Max number of consecutive retries ($max_consecutive_retries) exceeded on iteration $i"
 				break
 			end
