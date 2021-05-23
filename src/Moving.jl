@@ -187,14 +187,13 @@ function run_MSM(
 	win = @view x[1:the_range[1]]
 	estimate = estimator!(data, win; init_kmeans=true, kwargs...)
 	algo_name = estimate.algorithm
-	init_kmeans = reinit_kmeans
 	
 	# CANNOT parallelize this since `estimator!` is modifying state!
 	for (i, off) ∈ enumerate(the_range)
 		left, right = off - win_size + 1, off
 
 		win = @view x[left:right]
-		estimate = sort(estimator!(data, win; init_kmeans=init_kmeans, kwargs...))
+		estimate = sort(estimator!(data, win; init_kmeans=reinit_kmeans, kwargs...))
 
 		P[:, i] .= estimate.p
 		M[:, i] .= estimate.μ
