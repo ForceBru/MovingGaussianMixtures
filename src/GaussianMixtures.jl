@@ -115,16 +115,20 @@ Stores estimates:
 struct GaussianMixtureEstimate{k, T <: Real}
 	algorithm::String
 	n_iter::UInt
+	n_retries::UInt
 
 	p::MVector{k, T}
 	μ::MVector{k, T}
 	σ::MVector{k, T}
 
-	function GaussianMixtureEstimate(algo::String, n_iter::UInt, p::AbstractVector{T}, μ::AbstractVector{T}, σ::AbstractVector{T}) where T <: Real
+	function GaussianMixtureEstimate(
+		algo::String, n_iter::UInt, n_retries::UInt,
+		p::AbstractVector{T}, μ::AbstractVector{T}, σ::AbstractVector{T}
+	) where T <: Real
 		@assert length(p) == length(μ) == length(σ)
 
 		k = length(p)
-		new{k, T}(algo, n_iter, MVector{k, T}(p), MVector{k, T}(μ), MVector{k, T}(σ))
+		new{k, T}(algo, n_iter, n_retries, MVector{k, T}(p), MVector{k, T}(μ), MVector{k, T}(σ))
 	end
 end
 
@@ -140,7 +144,7 @@ function Base.sort(est::GaussianMixtureEstimate{k, T}; by=:μ, rev=true) where {
 	)
 
 	GaussianMixtureEstimate(
-		est.algorithm, est.n_iter,
+		est.algorithm, est.n_iter, est.n_retries,
 		est.p[order], est.μ[order], est.σ[order]
 	)
 end
@@ -206,7 +210,7 @@ function kmeans!(
 	end
 
 	(raw ? (maxiter, p, μ, σ, p_tmp, μ_tmp, σ_tmp)
-	    : GaussianMixtureEstimate("KMeans", maxiter, p, μ, σ))
+	    : GaussianMixtureEstimate("KMeans", maxiter, UInt(0), p, μ, σ))
 end
 
 """
@@ -222,8 +226,8 @@ will converge too quickly in high dimensions (curse of dimensionality?)
 """
 function em!(
 		data::GaussianMixture{k, T}, x::AbstractVector{T};
-		tol::T=3e-4, maxiter::Unsigned=UInt(500), eps=EPS, metric::Union{Missing, Function}=missing,
-		max_consecutive_retries = UInt(50),
+		tol=3e-4, maxiter::Unsigned=UInt(500), eps=EPS, metric::Union{Missing, Function}=missing,
+		max_consecutive_retries::Unsigned=UInt(100),
 		init_kmeans::Bool=true, kmeans_steps::Unsigned=UInt(4),
 		raw::Bool=false
 	) where {k, T <: Real}
@@ -237,8 +241,10 @@ function em!(
 
 	lik_old = metric === missing ? log_likelihood(x, p, μ, σ) : missing
 
-	i = UInt64(0)
-	n_consecutive_retries = UInt64(0)
+	i = UInt(0)
+	n_consecutive_retries = UInt(0)
+	total_retries = UInt(0)
+	mask = Vector{Bool}(undef, k)
 	while i < maxiter
 		@. data.probs = μ_tmp = σ_tmp = zero(T)
 		
@@ -276,7 +282,7 @@ function em!(
 		@avx @. μ = μ_tmp / data.probs
 		@avx @. σ = sqrt(σ_tmp / data.probs)
 
-		mask = σ .≈ zero(T)
+		mask .= σ .≈ zero(T)
 		n_zeros = sum(mask)
 		if n_zeros != 0
 			if n_consecutive_retries == max_consecutive_retries
@@ -291,6 +297,7 @@ function em!(
 			μ[mask] .= randn(n_zeros)
 
 			n_consecutive_retries += 1
+			total_retries += 1
 			continue
 		end
 
@@ -310,7 +317,7 @@ function em!(
 		should_stop && break
 	end
 	
-	raw ? (i, p, μ, σ) : GaussianMixtureEstimate("EM", i, p, μ, σ)
+	raw ? (i, p, μ, σ) : GaussianMixtureEstimate("EM", i, total_retries, p, μ, σ)
 end
 
 """
