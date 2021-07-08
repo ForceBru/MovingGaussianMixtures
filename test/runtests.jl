@@ -1,98 +1,44 @@
 using DelimitedFiles
-using Test
-
-using Plots, HDF5
-using BenchmarkTools
+using Plots
 
 using MovingGaussianMixtures
 
-sample_data = readdlm("sample_data.csv")[:, 1]
+const sample_data = readdlm("sample_data.csv")[:, 1]
 
-# Don't automatically show plots
-default(show=false)
-ENV["GKSwstype"]="nul"
-gr()
+const N_COMPONENTS = 6
+const STEP_SIZE = 5
+const WIN_SIZE = length(sample_data) - STEP_SIZE * 6
 
-const PLOT_SIZE = (800 * 1.5, 800)
-const N_COMPONENTS = UInt(7)
-const WINDOW_SIZE = UInt(10)
-const OUT_FILE = "sample_results.h5"
+@assert WIN_SIZE > 0
 
-@testset verbose=true "Basic computations" begin
-	@test let
-		@info "Estimating with k-means..."
-		ret_kmeans = kmeans(sample_data, N_COMPONENTS)
-		lik = log_likelihood(sample_data, ret_kmeans)
-		plt = plot(ret_kmeans, sample_data, size=PLOT_SIZE, title="Log-likelihood: $lik")
-		savefig(plt, "img/mixture_kmeans.png")
-		true
-	end
+# Fit regular k-means
+km = KMeans(N_COMPONENTS, WIN_SIZE)
+fit!(km, @view sample_data[1:WIN_SIZE])
 
-	@test let
-		@info "Estimating with EM..."
-		ret_em = em(sample_data, N_COMPONENTS)
-		lik = log_likelihood(sample_data, ret_em)
-		plt = plot(ret_em, sample_data, size=PLOT_SIZE, title="Log-likelihood: $lik")
-		savefig(plt, "img/mixture_em.png")
-		true
-	end
+@show km.μ
 
-	@test let
-		@info "Running MGM (kmeans)..."
-		ret_mov_kmeans = moving_kmeans(sample_data, N_COMPONENTS, WINDOW_SIZE, step_size=UInt(1))
-		plt = scatter(ret_mov_kmeans, markersize=4, alpha=.5, size=PLOT_SIZE)
-		savefig(plt, "img/running_kmeans.png")
-		true
-	end
+# Fit Gaussian mixture model
+gm = GaussianMixture(N_COMPONENTS, WIN_SIZE)
+fit!(gm, @view sample_data[1:WIN_SIZE])
 
-	@test let
-		@info "Running MGM (EM)..."
-		ret_mov_em = moving_em(sample_data, N_COMPONENTS, WINDOW_SIZE, step_size=UInt(1))
-		plt = scatter(ret_mov_em, markersize=4, alpha=.5, size=PLOT_SIZE)
-		savefig(plt, "img/running_em.png")
-		true
-	end
-end
+distr = distribution(gm)
+x = range(minimum(sample_data), maximum(sample_data), length=500)
+savefig(plot(distr, x), "img/mixture_em.png")
 
-@testset verbose=true "Saving/reading" begin
-	@test let
-		ret_mov_em = moving_em(sample_data, N_COMPONENTS, WINDOW_SIZE, step_size=UInt(1))
-		@info "Saving moving EM data to $OUT_FILE..."
-		h5open(OUT_FILE, "w") do fid
-			write(fid, ret_mov_em)
-		end
-		true
-	end
+@show rand(distr)
 
-	@test begin
-		@info "Reading data from $OUT_FILE..."
-		ret_read = h5open(OUT_FILE, "r") do fid
-			read(fid, MovingGaussianMixtures.MovingGaussianMixture, parse_dates=false)
-		end
-		true
-	end
+@show predict(distr, sample_data[1:10])
 
-	@test let
-		@info "Plotting data from $OUT_FILE..."
-		ret_read = h5open(OUT_FILE, "r") do fid
-			read(fid, MovingGaussianMixtures.MovingGaussianMixture, parse_dates=false)
-		end
-		ret_mov_kmeans = moving_kmeans(sample_data, N_COMPONENTS, WINDOW_SIZE, step_size=UInt(1))
-		plt_em = scatter(ret_read, markersize=2, alpha=.8, shade=:P)
-		plt_kmeans = scatter(ret_mov_kmeans, markersize=2, alpha=.8, shade=:P)
-		savefig(plot(plt_em, plt_kmeans, size=PLOT_SIZE), "img/running_shaded.png")
-		true
-	end
-end
+# Fit moving Gaussian mixture
+mgm = MovingGaussianMixture(N_COMPONENTS, WIN_SIZE, STEP_SIZE)
+fit!(mgm, sample_data)
 
-@testset verbose=true "Benchmarks" begin
-	@test let
-		@info "Benchmarking EM..."
-		data = GaussianMixture(sample_data, UInt(20))
-		@show Int(em!(data, sample_data).n_iter)
-		b_data = @benchmark em!($data, $sample_data)
-		show(stdout, "text/plain", b_data)
-		println()
-		true
-	end
-end
+par = params(mgm)
+@show size(par.P)
+
+println("Weights:")
+display(round.(par.P, digits=4))
+
+println("\nStandard deviations:")
+display(round.(par.Σ, digits=4))
+println()
