@@ -241,7 +241,10 @@ function fit!(
 	gm
 end
 
-distribution(gm::GaussianMixture) = UnivariateGMM(gm.μ, gm.σ, Categorical(gm.p))
+distribution(gm::GaussianMixture) = UnivariateGMM(
+	# Copy everything! Otherwise the params will be SHARED!
+	copy(gm.μ), copy(gm.σ), Categorical(copy(gm.p))
+)
 
 """
 ```
