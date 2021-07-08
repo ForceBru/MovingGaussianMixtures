@@ -1,5 +1,5 @@
 module MovingGaussianMixtures
-export MovingGaussianMixture, fit!, params
+export MovingGaussianMixture, fit!, params, nconverged, converged_pct
 
 include("Utils.jl")
 include("Kmeans.jl")
@@ -15,6 +15,8 @@ mutable struct MovingGaussianMixture{T <: Real}
     range::StepRange
     gm::GaussianMixture{T}
 
+    n_iter::Vector{Int}
+    converged::BitVector
     distributions::Vector{UnivariateGMM}
 end
 
@@ -25,7 +27,7 @@ function MovingGaussianMixture(K::Integer, win_size::Integer, step_size::Integer
 
     gm = GaussianMixture(K, win_size, T, warm_start=warm_start)
 
-    MovingGaussianMixture(gm.N:step_size:1, gm, UnivariateGMM[])
+    MovingGaussianMixture(gm.N:step_size:1, gm, Int[], BitVector(), UnivariateGMM[])
 end
 
 function fit!(
@@ -33,6 +35,9 @@ function fit!(
     quiet::Bool=false, gm_params...
 ) where T <: Real
     mgm.range = mgm.range.start:mgm.range.step:length(data)
+
+    mgm.n_iter = Vector{eltype(mgm.n_iter)}(undef, length(mgm.range))
+    mgm.converged = BitVector(undef, length(mgm.range))
     mgm.distributions = Vector{UnivariateGMM}(undef, length(mgm.range))
 
     progress = Progress(
@@ -47,12 +52,24 @@ function fit!(
         # Modifies `mgm.gm`!
         fit!(mgm.gm, window; gm_params...)
 
+        mgm.n_iter[i] = mgm.gm.n_iter
+        mgm.converged[i] = mgm.gm.converged
         mgm.distributions[i] = distribution(mgm.gm)
 
         (!quiet) && next!(progress)
     end
 
     mgm
+end
+
+"Number of converged mixtures"
+nconverged(mgm::MovingGaussianMixture) = sum(mgm.converged)
+
+"Percent of converged mixtures ∈ [0, 100]"
+function converged_pct(mgm::MovingGaussianMixture)
+    l = length(mgm.converged)
+
+    (l == 0) ? 0.0 : nconverged(mgm) / l * 100
 end
 
 struct MovingGaussianMixtureParams{T <: Real}

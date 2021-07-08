@@ -33,6 +33,8 @@ savefig(plot(distr, x), "img/mixture_em.png")
 mgm = MovingGaussianMixture(N_COMPONENTS, WIN_SIZE, STEP_SIZE)
 fit!(mgm, sample_data)
 
+@show converged_pct(mgm)
+
 par = params(mgm)
 @show size(par.P)
 

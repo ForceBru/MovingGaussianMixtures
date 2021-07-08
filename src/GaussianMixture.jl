@@ -1,4 +1,4 @@
-export GaussianMixture, fit!, distribution, predict, predict_proba
+export GaussianMixture, fit!, distribution, predict, predict_proba, nconverged, converged_pct
 
 using Statistics
 
@@ -144,7 +144,7 @@ end
 ```
 function fit!(
     gm::GaussianMixture{T}, data::AbstractVector{T};
-    tol=1e-6, eps=1e-10, maxiter::Integer=100
+    tol=1e-3, eps=1e-10, maxiter::Integer=1000
 ) where T <: Real
 ```
 
@@ -152,7 +152,7 @@ Fit a Gaussian mixture model to `data`.
 """
 function fit!(
     gm::GaussianMixture{T}, data::AbstractVector{T};
-    tol=1e-6, eps=1e-10, maxiter::Integer=100
+    tol=1e-3, eps=1e-10, maxiter::Integer=1000
 ) where T <: Real
 	@assert tol > 0
 	@assert eps > 0
@@ -230,6 +230,15 @@ function fit!(
 	
 	gm
 end
+
+"Number of converged mixtures"
+nconverged(gm::GaussianMixture) = Int(gm.converged)
+
+"""
+Percent of converged mixtures.
+Either 0.0 or 100.0 for `GaussianMixture`
+"""
+converged_pct(gm::GaussianMixture) = Float64(nconverged(gm)) * 100
 
 distribution(gm::GaussianMixture; eps=1e-10) = UnivariateGMM(
 	# Copy everything! Otherwise the params will be SHARED!

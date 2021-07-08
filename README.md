@@ -32,6 +32,17 @@ The results are available after a call like `fit!(model, my_data)`.
     - `K` - number of components in each mixture
     - `P`, `M` and `Σ` - `K x N` matrices; each _column_ holds the weights `p`, means `μ` and standard deviations `σ` of a mixture model fitted on the corresponding window of `my_data`
 
+### Convergence monitoring
+
+- Call `nconverged(model)` to see how many mixtures converged
+    - Returns `0` or `1` for `GaussianMixture`, since there's only one mixture
+    - Returns an integer between `0` and the number of windows for `MovingGaussianMixture`
+- Call `converged_pct(model)` to see the _percentage_ of converged mixtures
+    - Returns `0.0` or `100.0` for `GaussianMixture`, since there's only one mixture
+    - Returns a float in range `[0.0, 100.0]` for `MovingGaussianMixture`
+- Check `model.converged` to see which windows converged or failed to converge
+- Check `model.n_iter` for the number of iterations till convergence
+
 ## Plotting
 
 `UnivariateGMM` currently [cannot be plotted by `StatsPlots`](https://github.com/JuliaPlots/StatsPlots.jl/issues/448), but this package provides a simple implementation that can plot the resulting density and its individual components.
@@ -49,23 +60,23 @@ For code and sample data see [tests](test/).
 ```
 Weights:
 6×7 Matrix{Float64}:
- 0.0551  0.0729  0.0633  0.0669  0.0694  0.0593  0.0522
- 0.1934  0.2342  0.2349  0.1817  0.1691  0.1628  0.1354
- 0.2292  0.2131  0.1802  0.2258  0.2329  0.2592  0.2766
- 0.1092  0.084   0.0701  0.0763  0.0978  0.0992  0.0967
- 0.3524  0.3392  0.3599  0.3574  0.3531  0.3554  0.3724
- 0.0608  0.0566  0.0916  0.0919  0.0776  0.064   0.0668
+ 0.0543  0.0733  0.0587  0.0565  0.0691  0.0184  0.0181
+ 0.0382  0.2393  0.2309  0.181   0.1687  0.185   0.1944
+ 0.3608  0.2085  0.1822  0.2193  0.2325  0.2499  0.3344
+ 0.1143  0.086   0.0665  0.0764  0.0981  0.0899  0.0359
+ 0.368   0.3376  0.3625  0.3618  0.3531  0.401   0.403
+ 0.0644  0.0553  0.0992  0.105   0.0785  0.0559  0.0142
 \______/\______/\______/
  win 1   win 2   win 3
 
 Standard deviations:
 6×7 Matrix{Float64}:
- 0.0061  0.007   0.0069  0.0071  0.007   0.0065  0.0061
- 0.0025  0.0032  0.0034  0.0012  0.0012  0.0012  0.0011
- 0.0012  0.0013  0.0013  0.0037  0.0038  0.004   0.0041
- 0.0007  0.0006  0.0007  0.0008  0.0007  0.0007  0.0006
- 0.0031  0.0033  0.0034  0.0034  0.0037  0.0041  0.0041
- 0.0102  0.0101  0.0107  0.0107  0.0106  0.0103  0.0104
+ 0.006   0.007   0.0068  0.0069  0.007   0.0013  0.0013
+ 0.0007  0.0032  0.0035  0.0012  0.0012  0.0012  0.0015
+ 0.0016  0.0013  0.0013  0.0039  0.0038  0.0071  0.0077
+ 0.0007  0.0006  0.0007  0.0008  0.0007  0.0007  0.0001
+ 0.0031  0.0033  0.0034  0.0035  0.0038  0.0038  0.0037
+ 0.0106  0.01    0.011   0.0112  0.0106  0.0108  0.0065
 ```
 
 # WARNING
