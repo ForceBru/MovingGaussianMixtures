@@ -36,9 +36,9 @@ fit!(mgm, sample_data)
 par = params(mgm)
 @show size(par.P)
 
-println("Weights:")
+println("\nWeights:")
 display(round.(par.P, digits=4))
 
-println("\nStandard deviations:")
+println("\n\nStandard deviations:")
 display(round.(par.Σ, digits=4))
 println()

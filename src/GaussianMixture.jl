@@ -36,7 +36,7 @@ mutable struct GaussianMixture{T <: Real}
     # Estimated mixture parameters
 	p::Vector{T}
 	μ::Vector{T}
-	σ::Vector{T}
+	τ::Vector{T} # = 1/σ
 	
 	mask::BitVector
 	
@@ -64,7 +64,7 @@ mutable struct GaussianMixture{T <: Real}
 			false, warm_start, true, 0,
 			zeros(T, N), zeros(T, N),
 			zeros(T, K, N), zeros(T, K, N), zeros(T, K, N), # G
-			zeros(T, K), zeros(T, K), zeros(T, K), # p,μ,σ
+			zeros(T, K), zeros(T, K), zeros(T, K), # p,μ,τ
 			mask
 		)
 	end
@@ -90,18 +90,18 @@ end
 """
 function update_G!(
 	G::AbstractMatrix{T}, data::AbstractVector,
-	p::AbstractVector{T}, μ::AbstractVector{T}, σ::AbstractVector{T}
+	p::AbstractVector{T}, μ::AbstractVector{T}, τ::AbstractVector{T}
 ) where T <: Real
 	N = length(data)
 	K = length(p)
 	@assert size(G) == (K, N)
-	@assert K == length(μ) == length(σ)
+	@assert K == length(μ) == length(τ)
 
-	# ln_G = ln(p/σ * ϕ((x - μ) / σ))
-	#   = ( ln(p) - ln(σ) - ln(2π)/2 ) - ((x - μ) / σ)^2 / 2
+	# ln_G = ln(p * τ * ϕ((x - μ) * τ))
+	#   = ( ln(p) + ln(τ) - ln(2π)/2 ) - ((x - μ) * τ)^2 / 2
 	@tturbo @. G = (
-		log(p) - log(σ) - log(2π)/2
-		- ((data' - μ) / σ)^2 / 2
+		log(p) + log(τ) - log(2π)/2
+		- ((data' - μ) * τ)^2 / 2
 	)
 	
 	# For each n ∈ 1:N calculate
@@ -118,15 +118,15 @@ end
 function update_G!(G::Matrix, data::AbstractVector, gmm::UnivariateGMM)
 	μ, σ, cat = params(gmm)
 
-	update_G!(G, data, probs(cat), μ, σ)
+	update_G!(G, data, probs(cat), μ, 1 ./ σ)
 end
 
 function update_G!(gm::GaussianMixture{T}, data::AbstractVector{T}) where T <: Real
-	# ln_G = ln(p/σ * ϕ((x - μ) / σ))
-	#   = ( ln(p) - ln(σ) - ln(2π)/2 ) - ((x - μ) / σ)^2 / 2
+	# ln_G = ln(p * τ * ϕ((x - μ) * τ))
+	#   = ( ln(p) + ln(τ) - ln(2π)/2 ) - ((x - μ) * τ)^2 / 2
 	@tturbo @. gm.G = (
-		log(gm.p) - log(gm.σ) - log(2π)/2
-		- ((data' - gm.μ) / gm.σ)^2 / 2
+		log(gm.p) + log(gm.τ) - log(2π)/2
+		- ((data' - gm.μ) * gm.τ)^2 / 2
 	)
 	
 	# For each n ∈ 1:N calculate
@@ -175,14 +175,13 @@ function fit!(
 			@turbo gm.mask .= km.labels .== k
 			gm.p[k] = sum(gm.mask) / gm.N
 			
-			gm.σ[k] = if !any(gm.mask)
-				1/eps
+			gm.τ[k] = if !any(gm.mask)
+				# `k`th cluster is empty
+				zero(T)
 			else
-				std(data[gm.mask], corrected=false)
-			end
-			
-			if gm.σ[k] ≈ zero(T)
-				gm.σ[k] = 1/eps
+				the_std = std(data[gm.mask], corrected=false)
+
+				(the_std ≈ zero(T)) ? (1 / eps) : (1 / the_std)
 			end
 		end
 	end
@@ -204,20 +203,11 @@ function fit!(
 		
 		# Update means `μ`
 		mean!(gm.μ, @turbo gm.G .* data')
-		@turbo gm.μ ./= clamp.(gm.p, eps, one(T))
+		@turbo @. gm.μ /= clamp(gm.p, eps, one(T))
 		
-		# Update standard deviations `σ`
-		mean!(gm.σ, @turbo gm.G .* (data' .- gm.μ).^2)
-		@turbo gm.σ ./= clamp.(gm.p, eps, one(T))
-		@turbo gm.σ .= sqrt.(gm.σ)
-		
-		# Make sure `σ` doesn't contain zeros
-		for k ∈ 1:gm.K
-			if gm.σ[k] ≈ zero(T)
-				gm.σ[k] = 1 / eps
-				gm.μ[k] = minimum(data) * rand()
-			end
-		end
+		# Update precisions `τ`
+		mean!(gm.τ, @tturbo @. gm.G * (data' - gm.μ)^2)
+		@turbo @. gm.τ = sqrt(gm.p / clamp(gm.τ, eps, Inf))
 		
 		# Check for convergence
 		@tturbo @. gm.G_tmp = abs(gm.G - gm.G_prev)
@@ -236,14 +226,14 @@ function fit!(
 	sort_idx = sortperm(gm.μ)
 	gm.p .= gm.p[sort_idx]
 	gm.μ .= gm.μ[sort_idx]
-	gm.σ .= gm.σ[sort_idx]
+	gm.τ .= gm.τ[sort_idx]
 	
 	gm
 end
 
-distribution(gm::GaussianMixture) = UnivariateGMM(
+distribution(gm::GaussianMixture; eps=1e-10) = UnivariateGMM(
 	# Copy everything! Otherwise the params will be SHARED!
-	copy(gm.μ), copy(gm.σ), Categorical(copy(gm.p))
+	copy(gm.μ), 1 ./ clamp.(gm.τ, eps, Inf), Categorical(copy(gm.p))
 )
 
 """
