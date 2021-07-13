@@ -23,7 +23,9 @@ fit!(gm, @view sample_data[1:WIN_SIZE])
 
 distr = distribution(gm)
 x = range(minimum(sample_data), maximum(sample_data), length=500)
-savefig(plot(distr, x), "img/mixture_em.png")
+plt = histogram(sample_data, normalized=true, linewidth=0, alpha=.5)
+plot!(plt, distr, x)
+savefig(plt, "img/mixture_em.png")
 
 @show rand(distr)
 
@@ -44,3 +46,8 @@ display(round.(par.P, digits=4))
 println("\n\nStandard deviations:")
 display(round.(par.Σ, digits=4))
 println()
+
+savefig(
+    plot(par.M', title="Moving means of components"),
+    "img/moving_mixture.png"
+)

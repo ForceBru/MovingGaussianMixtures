@@ -79,6 +79,8 @@ Standard deviations:
  0.0106  0.01    0.011   0.0112  0.0106  0.0108  0.0065
 ```
 
+![moving EM](img/moving_mixture.png)
+
 # WARNING
 
 Versions `0.2+` are _not_ compatible with [versions `0.1+`](https://github.com/ForceBru/MovingGaussianMixtures.jl/tree/eeac185117ac6c9ab5fbe54c046fa42dc51957fb)!
