@@ -79,7 +79,7 @@ Standard deviations:
  0.0106  0.01    0.011   0.0112  0.0106  0.0108  0.0065
 ```
 
-![moving EM](img/moving_mixture.png)
+![moving EM](test/img/moving_mixture.png)
 
 # WARNING
 
