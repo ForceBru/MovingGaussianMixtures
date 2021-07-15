@@ -1,5 +1,6 @@
-export KMeans, fit!, inverse_transform
+export KMeans, inverse_transform
 
+import StatsBase
 using Statistics: mean, quantile
 
 using LoopVectorization
@@ -70,7 +71,7 @@ l2_norm(x, y) = maximum(abs.(x .- y))
 
 """
 ```
-function fit!(
+function StatsBase.fit!(
 	km::KMeans{T, U}, data::AbstractVector{T};
 	maxiter::Integer=100, tol=1e-6,
 	init=:quantile, metric::Function=l2_norm
@@ -83,7 +84,7 @@ Find `km.K` clusters in vector `data` of length `km.N`.
     - `:quantile` - `k`th center will be initialized with `k/km.K`th quantile of `data`
     - `:random` - each center is a random element of `data`
 """
-function fit!(
+function StatsBase.fit!(
 	km::KMeans{T, U}, data::AbstractVector{T};
 	maxiter::Integer=100, tol=1e-6,
 	init=:quantile, metric::Function=l2_norm

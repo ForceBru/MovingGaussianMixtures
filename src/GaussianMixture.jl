@@ -1,9 +1,10 @@
-export GaussianMixture, fit!, distribution, predict, predict_proba, nconverged, converged_pct
+export GaussianMixture, distribution, predict_proba, nconverged, converged_pct
 
 using Statistics
 
 using LoopVectorization
-using StatsBase: params
+import StatsBase
+using StatsBase: params, fit!
 using Distributions: UnivariateGMM, Categorical, ncomponents, probs
 
 """
@@ -142,7 +143,7 @@ end
 
 """
 ```
-function fit!(
+function StatsBase.fit!(
     gm::GaussianMixture{T}, data::AbstractVector{T};
     tol=1e-3, eps=1e-10, maxiter::Integer=1000
 ) where T <: Real
@@ -150,8 +151,8 @@ function fit!(
 
 Fit a Gaussian mixture model to `data`.
 """
-function fit!(
-    gm::GaussianMixture{T}, data::AbstractVector{T};
+function StatsBase.fit!(
+	gm::GaussianMixture{T}, data::AbstractVector{T};
     tol=1e-3, eps=1e-10, maxiter::Integer=1000
 ) where T <: Real
 	@assert tol > 0
@@ -269,7 +270,7 @@ end
 
 Return most probable value of latent variable `z` for each element of `data`.
 """
-function predict(gmm::UnivariateGMM, data::AbstractVector)
+function StatsBase.predict(gmm::UnivariateGMM, data::AbstractVector)
 	G = predict_proba(gmm, data)
 	N = size(G, 2)
 
