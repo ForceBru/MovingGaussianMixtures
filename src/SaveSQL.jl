@@ -29,19 +29,20 @@ function save_sql(
     params::MovingGaussianMixtureParams{T},
     id::AbstractString, dates::Union{Missing, AbstractVector{DateType}}=missing
 ) where { T <: Real, DateType}
-    N = length(params.range)
     if dates === missing
-        dates = 1:N
+        dates = collect(1:last(params.range))
     end
 
-    @assert length(dates) == N
+    N = length(dates)
+
+    @assert length(dates) ≥ last(params.range)
 
     win_size = params.range[1]
     stmt = DBInterface.prepare(conn, "INSERT INTO $table_name VALUES (:id, :date, :win_size, :component_no, :p, :μ, :σ)")
     
-    for t ∈ 1:N
+    for (i, t) ∈ enumerate(params.range)
         for k ∈ 1:params.K
-            p, μ, σ = @inbounds (params.P[k, t], params.M[k, t], params.Σ[k, t])
+            p, μ, σ = @inbounds (params.P[k, i], params.M[k, i], params.Σ[k, i])
             DBInterface.execute(stmt, [id, dates[t], win_size, k, p, μ, σ])
         end
     end

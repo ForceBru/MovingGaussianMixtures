@@ -1,7 +1,7 @@
 name = "MovingGaussianMixtures"
 uuid = "d949a032-4a83-43e6-ab72-6cfd2528ce78"
 authors = ["ForceBru <ForceBru@users.noreply.github.com>"]
-version = "0.2.0"
+version = "0.2.1"
 
 [deps]
 DBInterface = "a10d1c49-ce27-4219-8d33-6db1a4562965"
