@@ -1,6 +1,8 @@
 using DelimitedFiles
 using Plots
 
+using StatsBase # `fit!` function
+using SQLite, DBInterface # for saving moving models
 using MovingGaussianMixtures
 
 const sample_data = readdlm("sample_data.csv")[:, 1]
@@ -8,6 +10,8 @@ const sample_data = readdlm("sample_data.csv")[:, 1]
 const N_COMPONENTS = 6
 const STEP_SIZE = 5
 const WIN_SIZE = length(sample_data) - STEP_SIZE * 6
+const DB_FILE = "test_save.sqlite"
+const TABLE_NAME = "MovingMixture"
 
 @assert WIN_SIZE > 0
 
@@ -39,6 +43,15 @@ fit!(mgm, sample_data)
 
 par = params(mgm)
 @show size(par.P)
+
+@info "Saving moving model to $DB_FILE ..."
+let
+    rm(DB_FILE)
+    conn = SQLite.DB(DB_FILE)
+    DBInterface.execute(conn, "CREATE TABLE $TABLE_NAME (id TEXT, datetime REAL, win_size INT, n_component INT, p REAL, mu REAL, sigma REAL)")
+    save_sql(conn, TABLE_NAME, par, "my_time_series")
+end
+@info "Model saved!"
 
 println("\nWeights:")
 display(round.(par.P, digits=4))

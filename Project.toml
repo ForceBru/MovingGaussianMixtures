@@ -4,6 +4,7 @@ authors = ["ForceBru <ForceBru@users.noreply.github.com>"]
 version = "0.2.0"
 
 [deps]
+DBInterface = "a10d1c49-ce27-4219-8d33-6db1a4562965"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 LoopVectorization = "bdcacae8-1622-11e9-2a5c-532679323890"
 ProgressMeter = "92933f4c-e287-5a05-a399-4b506db050ca"

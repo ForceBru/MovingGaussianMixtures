@@ -1,5 +1,5 @@
 module MovingGaussianMixtures
-export MovingGaussianMixture, fit!, params, nconverged, converged_pct
+export MovingGaussianMixture, params, nconverged, converged_pct
 
 include("Utils.jl")
 include("Kmeans.jl")
@@ -7,7 +7,7 @@ include("GaussianMixture.jl")
 include("Plot.jl")
 
 import StatsBase
-using StatsBase: params
+using StatsBase: params, fit!
 using Distributions: UnivariateGMM, probs
 using ProgressMeter
 
@@ -30,7 +30,7 @@ function MovingGaussianMixture(K::Integer, win_size::Integer, step_size::Integer
     MovingGaussianMixture(gm.N:step_size:1, gm, Int[], BitVector(), UnivariateGMM[])
 end
 
-function fit!(
+function StatsBase.fit!(
     mgm::MovingGaussianMixture{T}, data::AbstractVector{T};
     quiet::Bool=false, gm_params...
 ) where T <: Real
@@ -119,5 +119,7 @@ function MovingGaussianMixtureParams(mgm::MovingGaussianMixture{T}) where T <: R
 end
 
 StatsBase.params(gm::MovingGaussianMixture) = MovingGaussianMixtureParams(gm)
+
+include("SaveSQL.jl")
 
 end # module
