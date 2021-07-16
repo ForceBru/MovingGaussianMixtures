@@ -1,31 +1,19 @@
-import DBInterface
+using TypedTables
 
-export save_sql
+export to_table
 
 """
 ```
-function save_sql(
-    conn, table_name::AbstractString,
+function to_table(
     params::MovingGaussianMixtureParams{T},
     id::AbstractString, dates::Union{Missing, AbstractVector{DateType}}=missing
 ) where { T <: Real, DateType}
 ```
 
-Save moving mixture parameters to an SQL database.
-
-Required structure of table `table_name`:
-1. [String] - for `id`
-2. [DateType] - for elements of `dates`
-3. [Integer] - for window size
-4. [Integer] - for number of component (∈ 1:params.K)
-5. [T] - for weights
-6. [T] - for means
-7. [T] - for standard deviations
-
-So, exactly 7 columns in this particular order.
+Return a `TypedTables.jl` table containing
+moving mixture parameters and additional info.
 """
-function save_sql(
-    conn, table_name::AbstractString,
+function to_table(
     params::MovingGaussianMixtureParams{T},
     id::AbstractString, dates::Union{Missing, AbstractVector{DateType}}=missing
 ) where { T <: Real, DateType}
@@ -33,12 +21,9 @@ function save_sql(
         dates = collect(1:last(params.range))
     end
 
-    N = length(dates)
-
     @assert length(dates) ≥ last(params.range)
 
     win_size = params.range[1]
-    stmt = DBInterface.prepare(conn, "INSERT INTO $table_name VALUES (:id, :date, :win_size, :component_no, :p, :μ, :σ)")
 
     TOTAL_SIZE = length(params.range) * params.K
 
@@ -64,10 +49,8 @@ function save_sql(
         end
     end
 
-    DBInterface.executemany(stmt, (
+    Table(
         id=all_ids, date=all_dates, win_size=all_win_sizes,
-        component_no=all_k, p=all_p, μ=all_μ, σ=all_σ
-    ))
-    
-    DBInterface.close!(stmt)
+        component_no=all_k, p=all_p, mu=all_μ, sigma=all_σ
+    )
 end

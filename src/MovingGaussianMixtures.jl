@@ -120,6 +120,6 @@ end
 
 StatsBase.params(gm::MovingGaussianMixture) = MovingGaussianMixtureParams(gm)
 
-include("SaveSQL.jl")
+include("Saving.jl")
 
 end # module
