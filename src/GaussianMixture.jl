@@ -8,7 +8,18 @@ using StatsBase: params, fit!
 using Distributions: UnivariateGMM, Categorical, ncomponents, probs
 
 """
-The state of the gaussian mixture.
+A finite K-component Gaussian mixture model with density
+
+    p(x) = ∑ₖ (p[k] / σ[k]) N( (x - μ[k]) / σ[k] )
+
+Where:
+- `k ∈ {1, …, K}` is the index of the current mixture component
+- `p[k]` is the weight of that component
+- `μ[k]` is its mean
+- `σ[k]` is its standard deviation
+- `N(⋅)` is the density of the standard normal distribution
+
+See also: [`fit!`](@ref)
 """
 mutable struct GaussianMixture{T <: Real}
     # Number of components
@@ -145,22 +156,41 @@ end
 ```
 function StatsBase.fit!(
     gm::GaussianMixture{T}, data::AbstractVector{T};
+	sort_by=:μ,
     tol=1e-3, eps=1e-10, maxiter::Integer=1000
 ) where T <: Real
 ```
 
-Fit a Gaussian mixture model to `data`.
+Fit the Gaussian mixture model `gm` to `data`.
+
+- Will sort the estimated parameters by the values of prameter `sort_by` (`:μ` or `:σ`) to ensure identifiability of the mixture
+- `tol > 0` is the tolerance used in convergence checking
+- `eps > 0` is a very small number used to avoid division by zero
+- `maxiter > 0` is the maximum number of iterations to perform
+
+### Convergence criteria
+
+Currently convergence is declared when the L1 norm
+between the latest and the previous distributions
+of the latent variable becomes less than `tol`.
 """
 function StatsBase.fit!(
 	gm::GaussianMixture{T}, data::AbstractVector{T};
+	sort_by::Symbol=:μ,
     tol=1e-3, eps=1e-10, maxiter::Integer=1000
 ) where T <: Real
-	@assert tol > 0
-	@assert eps > 0
-	
-	@assert maxiter > 0
+	(sort_by ∉ (:μ, :σ)) && 
+		throw(ArgumentError("Parameters can only be sorted by `sort_by ∈ (:μ, :σ)` (got $sort_by)"))
+	(tol ≤ 0) &&
+		throw(ArgumentError("Tolerance `tol` must be strictly greater than zero (got $tol)"))
+	(eps ≤ 0) &&
+		throw(ArgumentError("Epsilon `eps` must be a very small strictly positive number (got $eps)"))
+	(maxiter ≤ 0) &&
+		throw(ArgumentError("The maximum number of iterations `maxiter` must be strictly positive (got $maxiter)"))
+
 	N = length(data)
-	@assert N == gm.N "data must be of length $(gm.N), got $N"
+	(N ≠ gm.N) &&
+		throw(ArgumentError("Expected data of length $(gm.N) (got $N)"))
 	
 	gm.converged = false
 	gm.n_iter = 0
@@ -189,12 +219,7 @@ function StatsBase.fit!(
 	
 	# @assert !any(isnan.(gm.σ)) "Got NaN: $(gm.σ)"
 	
-	gm.first_call = false
-	
-	for i ∈ 1:maxiter
-		# @assert !any(gm.σ .≈ zero(T)) "Got zeros: $(gm.σ) $(gm.p)"
-		# @assert !any(isnan.(gm.σ)) "[$i] Got NaN: $(gm.σ) $(gm.p)"
-		
+	for _ ∈ 1:maxiter
 		update_G!(gm, data)
 		
 		# @assert !any(isnan.(gm.G))
@@ -209,49 +234,72 @@ function StatsBase.fit!(
 		# Update precisions `τ`
 		mean!(gm.τ, @tturbo @. gm.G * (data' - gm.μ)^2)
 		@turbo @. gm.τ = sqrt(gm.p / clamp(gm.τ, eps, Inf))
+
+		gm.n_iter += 1
 		
 		# Check for convergence
-		@tturbo @. gm.G_tmp = abs(gm.G - gm.G_prev)
-		if maximum(gm.G_tmp) < tol
+		@tturbo @. gm.G_prev = abs(gm.G - gm.G_prev)
+		if maximum(gm.G_prev) < tol
 			gm.converged = true
 			break
 		end
 		
 		@tturbo gm.G_prev .= gm.G
-			
-		gm.n_iter += 1
 	end
 	
 	# Sort the parameters
 	# to ensure identifiability
-	sort_idx = sortperm(gm.μ)
+	sort_idx = sortperm(getproperty(gm, sort_by))
 	gm.p .= gm.p[sort_idx]
 	gm.μ .= gm.μ[sort_idx]
 	gm.τ .= gm.τ[sort_idx]
+
+	# Now the first call is done,
+	# and it's safe to query results
+	gm.first_call = false
 	
 	gm
 end
 
-"Number of converged mixtures"
+_not_fit_error() = ArgumentError(
+	"The mixture hasn't been estimated yet. Call `StatsBase.fit!(the_mixture, your_data)` first"
+) |> throw
+
+"""
+    nconverged(gm::GaussianMixture)
+
+Number of converged mixtures.
+Either `0` (this mixture didn't converge) or `1` otherwise
+"""
 nconverged(gm::GaussianMixture) = Int(gm.converged)
 
 """
-Percent of converged mixtures.
-Either 0.0 or 100.0 for `GaussianMixture`
+    converged_pct(gm::GaussianMixture)
+
+Percent of converged mixtures. Either 0.0 or 100.0.
 """
 converged_pct(gm::GaussianMixture) = Float64(nconverged(gm)) * 100
 
-distribution(gm::GaussianMixture; eps=1e-10) = UnivariateGMM(
-	# Copy everything! Otherwise the params will be SHARED!
-	copy(gm.μ), 1 ./ clamp.(gm.τ, eps, Inf), Categorical(copy(gm.p))
-)
+"""
+    distribution(gm::GaussianMixture; eps=1e-10)
+
+Get the Distributions.jl `UnivariateGMM` of this `GaussianMixture`.
+"""
+distribution(gm::GaussianMixture; eps=1e-10) =
+	if gm.first_call
+		_not_fit_error()
+	else 
+		UnivariateGMM(
+			# Copy everything! Otherwise the params will be SHARED!
+			copy(gm.μ), 1 ./ clamp.(gm.τ, eps, Inf), Categorical(copy(gm.p))
+		)
+	end
 
 """
-```
-function predict_proba(gmm::UnivariateGMM, data::AbstractVector{T})::Matrix{T} where T <: Real
-```
+    predict_proba(gmm::UnivariateGMM, data::AbstractVector{T})::Matrix{T} where T <: Real
 
-Return (K x N) matrix, where each _column_ is the PMF of the latent variable `z`.
+Return (K x N) matrix, where each _column_ is
+the probability mass function of the latent variable `z`.
 - `K` - number of mixture components
 - `N` - length of input `data`
 """
@@ -266,7 +314,7 @@ function predict_proba(gmm::UnivariateGMM, data::AbstractVector{T})::Matrix{T} w
 end
 
 """
-    function predict(gmm::UnivariateGMM, data::AbstractVector)
+    StatsBase.predict(gmm::UnivariateGMM, data::AbstractVector)
 
 Return most probable value of latent variable `z` for each element of `data`.
 """

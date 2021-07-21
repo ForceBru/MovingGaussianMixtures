@@ -78,7 +78,7 @@ function StatsBase.fit!(
 )::KMeans{T, U} where { T <: Real, U <: Unsigned }
 ```
 
-Find `km.K` clusters in vector `data` of length `km.N`.
+Find `km.K` clusters in vector `data` of length `km.N` using the k-means algorithm.
 
 - `init` - initialization for cluster centers
     - `:quantile` - `k`th center will be initialized with `k/km.K`th quantile of `data`
@@ -89,10 +89,15 @@ function StatsBase.fit!(
 	maxiter::Integer=100, tol=1e-6,
 	init=:quantile, metric::Function=l2_norm
 )::KMeans{T, U} where { T <: Real, U <: Unsigned }
-	@assert length(data) == km.N
-	@assert maxiter > 0
-	@assert tol > 0
-	@assert init ∈ (:quantile, :random)
+	N = length(data)
+	(N ≠ km.N) &&
+		throw(ArgumentError("KMeans was set up for use with data of length $(km.N) (got $N)"))
+	(tol ≤ 0) &&
+		throw(ArgumentError("Tolerance `tol` must be strictly greater than zero (got $tol)"))
+	(maxiter ≤ 0) &&
+		throw(ArgumentError("The maximum number of iterations `maxiter` must be strictly positive (got $maxiter)"))
+	(init ∉ (:quantile, :random)) &&
+		throw(ArgumentError("`init` must be one of :quantile, :random (got $init)"))
 
 	# Initialize everything
 	km.converged = false
@@ -108,8 +113,6 @@ function StatsBase.fit!(
 			@assert false "BUG while initializing centers"
 		end
 	end
-
-	km._first_call = false
 
 	# Main loop
 	for i ∈ 1:maxiter
@@ -144,6 +147,8 @@ function StatsBase.fit!(
 	# Sort centers to ensure identifiability
 	sort!(km.μ)
 	sort!(km.μ_old)
+
+	km._first_call = false
 
 	km
 end

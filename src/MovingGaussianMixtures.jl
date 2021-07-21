@@ -1,4 +1,6 @@
 module MovingGaussianMixtures
+using Base: String
+using TypedTables: getproperty
 export MovingGaussianMixture, params, nconverged, converged_pct
 
 include("Utils.jl")
@@ -11,6 +13,10 @@ using StatsBase: params, fit!
 using Distributions: UnivariateGMM, probs
 using ProgressMeter
 
+"""
+A sequence of Gaussian mixture models ([`GaussianMixture`](@ref))
+estimated on moving windows over the data.
+"""
 mutable struct MovingGaussianMixture{T <: Real}
     range::StepRange
     gm::GaussianMixture{T}
@@ -20,6 +26,20 @@ mutable struct MovingGaussianMixture{T <: Real}
     distributions::Vector{UnivariateGMM}
 end
 
+"""
+```
+MovingGaussianMixture(K::Integer, win_size::Integer, step_size::Integer, ::Type{T}=Float64;
+    warm_start::Bool=false
+) where T <: Real
+```
+
+Initialize te moving Gaussian mixture.
+
+- `K > 0` - number of components in each mixture
+- `win_size > 0` - the width of the moving window
+- `step_size > 0` - each next window will be shifted by `step_size` indices towards the end of the data
+- `warm_start` - use estimates from the previous window as starting points for the current window (`true`) or not
+"""
 function MovingGaussianMixture(K::Integer, win_size::Integer, step_size::Integer, ::Type{T}=Float64;
     warm_start::Bool=false
 ) where T <: Real
@@ -30,6 +50,19 @@ function MovingGaussianMixture(K::Integer, win_size::Integer, step_size::Integer
     MovingGaussianMixture(gm.N:step_size:1, gm, Int[], BitVector(), UnivariateGMM[])
 end
 
+"""
+```
+function StatsBase.fit!(
+    mgm::MovingGaussianMixture{T}, data::AbstractVector{T};
+    quiet::Bool=false, gm_params...
+) where T <: Real
+```
+
+Fit the `MovingGaussianMixture` over `data`.
+
+- `quiet` - print progress bar (`true`) or not
+- `gm_params` - parameters for [`fit!`](@ref) for individual mixtures
+"""
 function StatsBase.fit!(
     mgm::MovingGaussianMixture{T}, data::AbstractVector{T};
     quiet::Bool=false, gm_params...
@@ -62,16 +95,31 @@ function StatsBase.fit!(
     mgm
 end
 
-"Number of converged mixtures"
+"""
+    nconverged(mgm::MovingGaussianMixture)
+
+Returns the number of converged mixtures
+"""
 nconverged(mgm::MovingGaussianMixture) = sum(mgm.converged)
 
-"Percent of converged mixtures ∈ [0, 100]"
+"""
+    converged_pct(mgm::MovingGaussianMixture)
+
+Returns the percent of converged mixtures ∈ [0, 100]
+"""
 function converged_pct(mgm::MovingGaussianMixture)
     l = length(mgm.converged)
 
     (l == 0) ? 0.0 : nconverged(mgm) / l * 100
 end
 
+"""
+Parameters estimated using [`MovingGaussianMixture`](@ref).
+
+- `range` - the indices of the `data` supplied to [`fit!`](@ref)
+- `K` - the number of components in each mixture
+- `P`, `M`, `Σ` - `K x length(range)` matrices of weights, means and standard deviations of the mixtures
+"""
 struct MovingGaussianMixtureParams{T <: Real}
     # Range over which the mixtures were fitted
     range::StepRange
@@ -99,6 +147,11 @@ struct MovingGaussianMixtureParams{T <: Real}
     end
 end
 
+"""
+    MovingGaussianMixtureParams(mgm::MovingGaussianMixture{T}) where T <: Real
+
+Retrieve parameters from the [`MovingGaussianMixture`](@ref).
+"""
 function MovingGaussianMixtureParams(mgm::MovingGaussianMixture{T}) where T <: Real
     K = mgm.gm.K
     N = length(mgm.range)
@@ -118,6 +171,12 @@ function MovingGaussianMixtureParams(mgm::MovingGaussianMixture{T}) where T <: R
     MovingGaussianMixtureParams(mgm.range, K, P, M, Σ)
 end
 
+"""
+    StatsBase.params(gm::MovingGaussianMixture)
+
+Retrieve parameters from the [`MovingGaussianMixture`](@ref).
+Returns [`MovingGaussianMixtureParams`](@ref).
+"""
 StatsBase.params(gm::MovingGaussianMixture) = MovingGaussianMixtureParams(gm)
 
 include("Saving.jl")
