@@ -47,7 +47,8 @@ par = params(mgm)
 @info "Saving moving model to $DB_FILE ..."
 let
     table_data = to_table(par, "my_time_series")
-    rm(DB_FILE)
+    println(table_data)
+    rm(DB_FILE, force=true)
     conn = SQLite.DB(DB_FILE)
     SQLite.load!(table_data, conn, TABLE_NAME)
 end

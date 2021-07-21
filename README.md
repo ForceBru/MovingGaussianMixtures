@@ -43,6 +43,89 @@ The results are available after a call like `fit!(model, my_data)`.
 - Check `model.converged` to see which windows converged or failed to converge
 - Check `model.n_iter` for the number of iterations till convergence
 
+### Saving
+
+The `params` of the fitted `MovingGaussianMixture`, along with other information, can be stored in a `TypedTables.jl` table, which can later be written to a database (using, for example `SQLite.jl`), a CSV file (with `CSV.jl`), etc.
+
+To create the table, call the `to_table` function:
+
+```julia
+const N_COMPONENTS = 4
+const WINDOW_SIZE = 300
+const STEP_SIZE = 1
+
+moving_mixture = MovingGaussianMixture(N_COMPONENTS, WINDOW_SIZE, STEP_SIZE)
+fit!(moving_mixture, my_data)
+
+moving_mixture_parameters = params(moving_mixture)
+result_table = to_table(moving_mixture_parameters, "my_series_name")
+
+# Or provide your own timestamps:
+@assert size(timestamps_for_original_my_data) == size(my_data)
+result_table = to_table(
+    moving_mixture_parameters, "my_series_name",
+    timestamps_for_original_my_data
+)
+```
+
+If timestamps are not provided, indices of the original series will be used instead.
+
+#### Sample table
+
+See [`test_save.sqlite`](test/test_save.sqlite) and [`runtests.jl`](test/runtests.jl).
+
+```
+Table with 8 columns and 42 rows:
+      series_name     timestamp  window_size  n_components  component_id  p          mu            sigma
+    ┌─────────────────────────────────────────────────────────────────────────────────────────────────────────
+ 1  │ my_time_series  195        195          6             1             0.0543098  -0.0138669    0.00599621
+ 2  │ my_time_series  195        195          6             2             0.0382253  -0.0063983    0.000724065
+ 3  │ my_time_series  195        195          6             3             0.360768   -0.00158028   0.00159525
+ 4  │ my_time_series  195        195          6             4             0.114322   0.000654044   0.000704765
+ 5  │ my_time_series  195        195          6             5             0.368005   0.00335387    0.00314794
+ 6  │ my_time_series  195        195          6             6             0.0643699  0.0108544     0.0105628
+ 7  │ my_time_series  200        195          6             1             0.0733269  -0.0114726    0.00700572
+ 8  │ my_time_series  200        195          6             2             0.239261   -0.00228649   0.00317603
+ 9  │ my_time_series  200        195          6             3             0.208497   -0.00111573   0.00125155
+ 10 │ my_time_series  200        195          6             4             0.0859712  0.000778615   0.000637349
+ 11 │ my_time_series  200        195          6             5             0.337604   0.00340301    0.00328195
+ 12 │ my_time_series  200        195          6             6             0.0553402  0.0125178     0.0100099
+ 13 │ my_time_series  205        195          6             1             0.0587129  -0.0123632    0.00682372
+ 14 │ my_time_series  205        195          6             2             0.230949   -0.00193028   0.00347608
+ 15 │ my_time_series  205        195          6             3             0.182241   -0.00125282   0.00125983
+ 16 │ my_time_series  205        195          6             4             0.0664648  0.000565645   0.000688284
+ 17 │ my_time_series  205        195          6             5             0.362481   0.00275366    0.00339055
+ 18 │ my_time_series  205        195          6             6             0.0991519  0.00745082    0.0109909
+ 19 │ my_time_series  210        195          6             1             0.0564521  -0.0123666    0.00686291
+ 20 │ my_time_series  210        195          6             2             0.181045   -0.00144129   0.00124928
+ ⋮  │       ⋮             ⋮           ⋮            ⋮             ⋮            ⋮           ⋮             ⋮
+```
+
+Here we see estimates of a Gaussian mixture model with 6 components for a time series called `my_time_series` with window size 195. The means of the first component, for example, can be extracted like this (SQL syntax, but the same is possible with R's dplyr or Julia's DataFrames):
+
+```SQL
+SELECT mu FROM table_above
+WHERE series_name = "my_time_series"
+AND window_size = 195
+AND n_components = 6
+AND component_id = 1
+ORDER BY timestamp ASC
+```
+
+The columns `(series_name, window_size, n_components, component_id)` uniquely identify the time series for a particular component.
+
+#### Saving to CSV, SQLite, etc
+
+Then save the table to CSV, for example:
+
+```julia
+using CSV
+
+result_table |> CSV.write("my_moving_mixture.csv")
+```
+
+It's also possible to save to any format that supports `Tables.jl`-like data, such as SQLite databases using [`SQLite.load!`](https://juliadatabases.org/SQLite.jl/stable/#SQLite.load!). See [`runtests.jl`](test/runtests.jl) for an example.
+
 ## Plotting
 
 `UnivariateGMM` currently [cannot be plotted by `StatsPlots`](https://github.com/JuliaPlots/StatsPlots.jl/issues/448), but this package provides a simple implementation that can plot the resulting density and its individual components.
