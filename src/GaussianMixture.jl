@@ -248,8 +248,16 @@ function StatsBase.fit!(
 	end
 	
 	# Sort the parameters
+	# in INCREASING order of `sort_by`
 	# to ensure identifiability
-	sort_idx = sortperm(getproperty(gm, sort_by))
+	sort_idx = if sort_by == :μ
+		sortperm(gm.μ)
+	elseif sort_by == :σ
+		# τ = 1/σ, so sort in reverse order!
+		sortperm(gm.τ, rev=true)
+	else
+		@assert false "BUG: sort_by=$sort_by not handled!"
+	end
 	gm.p .= gm.p[sort_idx]
 	gm.μ .= gm.μ[sort_idx]
 	gm.τ .= gm.τ[sort_idx]
