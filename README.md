@@ -10,9 +10,11 @@ The interface is similar to that of SciKit-Learn. To fit, for example, a Gaussia
 - `MovingGaussianMixture(K, win_size, step_size; warm_start=false)` represents a series of Gaussian mixtures with `K` components each fit on rolling windows of length `win_size` of the data.
 - `KMeans(K, N; warm_start=false)` represents the state of the `K`-means algorithm used to initialize the means of the GMM.
 
-Each model is fit using the `fit!` method. For example:
+Each model is fit using the `fit!` method provided by `StatsBase.jl`. For example:
 
 ```julia
+using StatsBase
+
 my_data = rand(200)
 
 # Gaussian mixture model with 5 components
@@ -128,7 +130,7 @@ It's also possible to save to any format that supports `Tables.jl`-like data, su
 
 ## Plotting
 
-`UnivariateGMM` currently [cannot be plotted by `StatsPlots`](https://github.com/JuliaPlots/StatsPlots.jl/issues/448), but this package provides a simple implementation that can plot the resulting density and its individual components.
+`UnivariateGMM` [_can_ be plotted by `StatsPlots`](https://github.com/JuliaPlots/StatsPlots.jl/issues/448), but it currently [plots _unweighted_ PDFs of components](https://github.com/JuliaPlots/StatsPlots.jl/issues/458), which makes it difficult to interpret the plot. This package provides a simple `Plots.jl` recipe that can plot the resulting density and its individual _weighted_ components.
 
 ## Example
 
