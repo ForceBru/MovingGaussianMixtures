@@ -1,8 +1,10 @@
 using DelimitedFiles
 using Plots
 
+using BenchmarkTools
 using StatsBase # `fit!` function
 using SQLite # for saving moving models
+
 using MovingGaussianMixtures
 
 const sample_data = readdlm("sample_data.csv")[:, 1]
@@ -35,13 +37,23 @@ savefig(plt, "img/mixture_em.png")
 
 @show predict(distr, sample_data[1:10])
 
+@info "Benchmarking..."
+bench_res = let
+    data = rand(distr, 1000)
+    gm = GaussianMixture(N_COMPONENTS, 1000)
+
+    @benchmark fit!($gm, $data)
+end
+display(bench_res)
+println()
+
 # Fit moving Gaussian mixture
 mgm = MovingGaussianMixture(N_COMPONENTS, WIN_SIZE, STEP_SIZE)
 fit!(mgm, sample_data)
 
 @show converged_pct(mgm)
 
-par = params(mgm)
+par = MovingGaussianMixtures.params(mgm)
 @show size(par.P)
 
 @info "Saving moving model to $DB_FILE ..."
