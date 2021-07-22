@@ -2,6 +2,7 @@ using DelimitedFiles
 using Plots
 
 using BenchmarkTools
+import Random
 using StatsBase # `fit!` function
 using SQLite # for saving moving models
 
@@ -39,6 +40,7 @@ savefig(plt, "img/mixture_em.png")
 
 @info "Benchmarking..."
 bench_res = let
+    Random.seed!(42)
     data = rand(distr, 1000)
     gm = GaussianMixture(N_COMPONENTS, 1000)
 
