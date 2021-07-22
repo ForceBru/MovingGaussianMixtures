@@ -8,6 +8,11 @@ using SQLite # for saving moving models
 
 using MovingGaussianMixtures
 
+# Don't automatically show plots
+default(show=false)
+ENV["GKSwstype"]="nul"
+gr()
+
 const sample_data = readdlm("sample_data.csv")[:, 1]
 
 const N_COMPONENTS = 6
