@@ -1,11 +1,12 @@
 export GaussianMixture, distribution, predict_proba, nconverged, converged_pct
+export log_likelihood, logpdf # reexport from Distributions
 
 using Statistics
 
 using LoopVectorization
 import StatsBase
 using StatsBase: params, fit!
-using Distributions: UnivariateGMM, Categorical, ncomponents, probs
+using Distributions: UnivariateGMM, Categorical, ncomponents, probs, logpdf
 
 """
 A finite K-component Gaussian mixture model with density
@@ -304,6 +305,15 @@ distribution(gm::GaussianMixture; eps=1e-10) =
 			copy(gm.μ), 1 ./ clamp.(gm.τ, eps, Inf), Categorical(copy(gm.p))
 		)
 	end
+
+log_likelihood(gmm::UnivariateGMM, x::Real) = logpdf(gmm, x)
+
+"""
+    log_likelihood(gmm::UnivariateGMM, x::AbstractVector)
+
+Compute log-likelihood of the mixture
+"""
+log_likelihood(gmm::UnivariateGMM, x::AbstractVector{T}) where T <: Real = sum(logpdf.(gmm, x))
 
 """
     predict_proba(gmm::UnivariateGMM, data::AbstractVector{T})::Matrix{T} where T <: Real
