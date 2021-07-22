@@ -228,11 +228,13 @@ function StatsBase.fit!(
 		mean!(gm.p, gm.G)
 		
 		# Update means `μ`
-		mean!(gm.μ, @turbo gm.G .* data')
+		@tturbo @. gm.G_tmp = gm.G .* data'
+		mean!(gm.μ, gm.G_tmp)
 		@turbo @. gm.μ /= clamp(gm.p, eps, one(T))
 		
 		# Update precisions `τ`
-		mean!(gm.τ, @tturbo @. gm.G * (data' - gm.μ)^2)
+		@tturbo @. gm.G_tmp = gm.G * (data' - gm.μ)^2
+		mean!(gm.τ, gm.G_tmp)
 		@turbo @. gm.τ = sqrt(gm.p / clamp(gm.τ, eps, Inf))
 
 		gm.n_iter += 1
