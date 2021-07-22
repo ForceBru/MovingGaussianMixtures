@@ -40,13 +40,12 @@ mutable struct KMeans{T <: Real, U <: Unsigned}
 		@assert K > 0
 		@assert N > 0
 
-		μ = zeros(T, K)
-
 		new{T, U}(
 			K, N,
 			false, warm_start, true, 0,
-			μ, μ,
-			zeros(U, N), zeros(Bool, N)
+			zeros(T, K), zeros(T, K), # μ
+			zeros(U, N), # labels
+			zeros(Bool, N) # mask
 		)
 	end
 end
@@ -86,7 +85,7 @@ Find `km.K` clusters in vector `data` of length `km.N` using the k-means algorit
 """
 function StatsBase.fit!(
 	km::KMeans{T, U}, data::AbstractVector{T};
-	maxiter::Integer=100, tol=1e-6,
+	maxiter::Integer=100, tol=1e-3,
 	init=:quantile, metric::Function=l2_norm
 )::KMeans{T, U} where { T <: Real, U <: Unsigned }
 	N = length(data)
