@@ -89,13 +89,13 @@ function StatsBase.fit!(
 	init=:quantile, metric::Function=l2_norm
 )::KMeans{T, U} where { T <: Real, U <: Unsigned }
 	N = length(data)
-	(N ≠ km.N) &&
+	(N == km.N) ||
 		throw(ArgumentError("KMeans was set up for use with data of length $(km.N) (got $N)"))
-	(tol ≤ 0) &&
-		throw(ArgumentError("Tolerance `tol` must be strictly greater than zero (got $tol)"))
-	(maxiter ≤ 0) &&
+	(tol > 0) ||
+		throw(ArgumentError("Tolerance `tol` must be strictly positive (got $tol)"))
+	(maxiter > 0) ||
 		throw(ArgumentError("The maximum number of iterations `maxiter` must be strictly positive (got $maxiter)"))
-	(init ∉ (:quantile, :random)) &&
+	(init ∈ (:quantile, :random)) ||
 		throw(ArgumentError("`init` must be one of :quantile, :random (got $init)"))
 
 	# Initialize everything

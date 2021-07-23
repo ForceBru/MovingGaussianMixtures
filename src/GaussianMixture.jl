@@ -183,17 +183,17 @@ function StatsBase.fit!(
 	sort_by::Symbol=:μ,
     tol=1e-3, eps=1e-10, maxiter::Integer=1000
 ) where T <: Real
-	(sort_by ∉ (:μ, :σ)) && 
-		throw(ArgumentError("Parameters can only be sorted by `sort_by ∈ (:μ, :σ)` (got $sort_by)"))
-	(tol ≤ 0) &&
-		throw(ArgumentError("Tolerance `tol` must be strictly greater than zero (got $tol)"))
-	(eps ≤ 0) &&
+	(sort_by ∈ (:p, :μ, :σ)) ||
+		throw(ArgumentError("Parameters can only be sorted by `sort_by ∈ (:p, :μ, :σ)` (got $sort_by)"))
+	(tol > 0) ||
+		throw(ArgumentError("Tolerance `tol` must be strictly positive (got $tol)"))
+	(eps > 0) ||
 		throw(ArgumentError("Epsilon `eps` must be a very small strictly positive number (got $eps)"))
-	(maxiter ≤ 0) &&
+	(maxiter > 0) ||
 		throw(ArgumentError("The maximum number of iterations `maxiter` must be strictly positive (got $maxiter)"))
 
 	N = length(data)
-	(N ≠ gm.N) &&
+	(N == gm.N) ||
 		throw(ArgumentError("Expected data of length $(gm.N) (got $N)"))
 	
 	gm.converged = false
@@ -235,7 +235,7 @@ function StatsBase.fit!(
 		mean!(gm.p, gm.G)
 		
 		# Update means `μ`
-		@tturbo @. gm.G_tmp = gm.G .* data'
+		@tturbo @. gm.G_tmp = gm.G * data'
 		mean!(gm.μ, gm.G_tmp)
 		@turbo @. gm.μ /= clamp(gm.p, eps, one(T))
 		
@@ -261,6 +261,8 @@ function StatsBase.fit!(
 	# to ensure identifiability
 	sort_idx = if sort_by == :μ
 		sortperm(gm.μ)
+	elseif sort_by == :p
+		sortperm(gm.p)
 	elseif sort_by == :σ
 		# τ = 1/σ, so sort in reverse order!
 		sortperm(gm.τ, rev=true)
