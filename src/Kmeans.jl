@@ -114,12 +114,12 @@ function StatsBase.fit!(
 	end
 
 	# Main loop
-	for i ∈ 1:maxiter
+	for _ ∈ 1:maxiter
 		km.n_iter += 1
 
 		# Update labels
-		@inbounds for (i, x) ∈ enumerate(data)
-			km.labels[i] = argmin(@turbo abs.(km.μ .- x))
+		@inbounds for i ∈ indices(data, 1)
+			km.labels[i] = argmin(@turbo abs.(km.μ .- data[i]))
 		end
 
 		# Update centers
