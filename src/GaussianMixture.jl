@@ -52,6 +52,8 @@ mutable struct GaussianMixture{T <: Real}
 	τ::Vector{T} # = 1/σ
 	
 	mask::BitVector
+
+	kmeans::Union{Missing, KMeans{T}}
 	
 	"""
     ```
@@ -78,7 +80,8 @@ mutable struct GaussianMixture{T <: Real}
 			zeros(T, N), zeros(T, N),
 			zeros(T, K, N), zeros(T, K, N), zeros(T, K, N), # G
 			zeros(T, K), zeros(T, K), zeros(T, K), # p,μ,τ
-			mask
+			mask,
+			missing # KMeans instance
 		)
 	end
 end
@@ -199,12 +202,15 @@ function StatsBase.fit!(
 	# Initialize mixture parameters
 	if gm.first_call || !gm.warm_start
 		gm.G_prev .= zero(T)
-		km = KMeans(gm.K, gm.N)
-		fit!(km, data)
+
+		if gm.kmeans === missing
+			gm.kmeans = KMeans(gm.K, gm.N)
+		end
+		fit!(gm.kmeans, data)
 		
-		gm.μ .= km.μ
+		gm.μ .= gm.kmeans.μ
 		@inbounds for k ∈ 1:gm.K
-			@turbo gm.mask .= km.labels .== k
+			@turbo gm.mask .= gm.kmeans.labels .== k
 			gm.p[k] = sum(gm.mask) / gm.N
 			
 			gm.τ[k] = if !any(gm.mask)
