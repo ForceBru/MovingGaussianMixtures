@@ -66,7 +66,7 @@ function Base.copy(km::KMeans{T, U})::KMeans{T, U} where {T, U}
 	ret
 end
 
-l2_norm(x, y) = maximum(abs.(x .- y))
+l2_norm(x, y) = maximum(@turbo abs.(x .- y))
 
 """
 ```

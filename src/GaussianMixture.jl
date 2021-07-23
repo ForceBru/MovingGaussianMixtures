@@ -305,7 +305,7 @@ Get the Distributions.jl `UnivariateGMM` of this `GaussianMixture`.
 distribution(gm::GaussianMixture; eps=1e-10) =
 	if gm.first_call
 		_not_fit_error()
-	else 
+	else
 		UnivariateGMM(
 			# Copy everything! Otherwise the params will be SHARED!
 			copy(gm.μ), 1 ./ clamp.(gm.τ, eps, Inf), Categorical(copy(gm.p))
