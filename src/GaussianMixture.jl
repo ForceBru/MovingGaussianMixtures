@@ -156,6 +156,19 @@ function update_G!(gm::GaussianMixture{T}, data::AbstractVector{T}) where T <: R
 	@tturbo @. gm.G = exp(gm.G) / exp(gm.tmp_ln_s')
 end
 
+function mean_turbo!(x::AbstractVector{T}, G::AbstractMatrix{T}) where T <: Real
+	# Reduces benchmark times on one thread
+	# from 82.5...83.5...85.3 ms
+	# to   76.8...77.7...80.1 ms
+	@tturbo for k ∈ indices(x, 1)
+		s = zero(T)
+		for t ∈ indices(G, 2)
+			s += G[k, t]
+		end
+		x[k] = s / size(G, 2)
+	end
+end
+
 """
 ```
 function StatsBase.fit!(
@@ -215,12 +228,17 @@ function StatsBase.fit!(
 			
 			gm.τ[k] = if !any(gm.mask)
 				# `k`th cluster is empty
-				zero(T)
+				eps
 			else
 				the_std = std(data[gm.mask], corrected=false)
 
 				(the_std ≈ zero(T)) ? (1 / eps) : (1 / the_std)
 			end
+		end
+
+		if !(sum(gm.p) ≈ 1)
+			@. gm.p = clamp(gm.p, eps, one(T))
+			@. gm.p /= sum(gm.p)
 		end
 	end
 	
@@ -232,16 +250,16 @@ function StatsBase.fit!(
 		# @assert !any(isnan.(gm.G))
 		
 		# Update weights `p`
-		mean!(gm.p, gm.G)
+		mean_turbo!(gm.p, gm.G)
 		
 		# Update means `μ`
 		@tturbo @. gm.G_tmp = gm.G * data'
-		mean!(gm.μ, gm.G_tmp)
+		mean_turbo!(gm.μ, gm.G_tmp)
 		@turbo @. gm.μ /= clamp(gm.p, eps, one(T))
 		
 		# Update precisions `τ`
 		@tturbo @. gm.G_tmp = gm.G * (data' - gm.μ)^2
-		mean!(gm.τ, gm.G_tmp)
+		mean_turbo!(gm.τ, gm.G_tmp)
 		@turbo @. gm.τ = sqrt(gm.p / clamp(gm.τ, eps, Inf))
 
 		gm.n_iter += 1
