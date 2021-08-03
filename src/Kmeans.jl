@@ -109,20 +109,18 @@ function fit!(
 	end
 
 	# Main loop
-	for _ ∈ 1:maxiter
-		km.n_iter += 1
-
+	for i ∈ 1:maxiter
 		# Update labels
-		@inbounds for i ∈ indices(data, 1)
+		@inbounds for i ∈ eachindex(data)
 			km.labels[i] = argmin(@turbo abs.(km.μ .- data[i]))
 		end
 
 		# Update centers
-		@inbounds for k ∈ 1:km.K
-			@turbo km.mask .= km.labels .== k
+		@inbounds for k::U ∈ 1:km.K
+			km.mask .= km.labels .== k
 
 			km.μ[k] = if !any(km.mask)
-				# The cluster is empty!
+				@warn "KMeans: Cluster $k empty!"
 				rand(data)
 			else
 				mean(data[km.mask])
@@ -130,8 +128,10 @@ function fit!(
 		end
 
 		# Check convergence
-		if metric(km.μ, km.μ_old) < tol
+		m = metric(km.μ, km.μ_old)
+		if m < tol
 			km.converged = true
+			km.n_iter = i
 			break
 		end
 
@@ -141,6 +141,10 @@ function fit!(
 	# Sort centers to ensure identifiability
 	sort!(km.μ)
 	sort!(km.μ_old)
+
+	if !km.converged
+		km.n_iter = maxiter
+	end
 
 	km._first_call = false
 
