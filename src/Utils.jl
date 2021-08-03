@@ -1,8 +1,5 @@
 export StandardScaler, transform, inverse_transform
 
-using StatsBase: params
-using Distributions: UnivariateGMM
-
 """
 Scales data to have zero mean and unit variance.
 Stores original mean `μ` and standard deviation `σ`.
@@ -18,9 +15,7 @@ struct StandardScaler{T <: Real}
 	end
 	
     """
-    ```
-    function StandardScaler(x::AbstractVector{T}) where T <: Real
-    ```
+        StandardScaler(x::AbstractVector{T}) where T <: Real
 
     Initialize `StandardScaler` with the mean and
     standard deviation of the given vector

@@ -1,12 +1,4 @@
-export GaussianMixture, distribution, predict_proba, nconverged, converged_pct
-export log_likelihood, logpdf # reexport from Distributions
-
-using Statistics
-
-using LoopVectorization
-import StatsBase
-using StatsBase: params, fit!
-using Distributions: UnivariateGMM, Categorical, ncomponents, probs, logpdf
+export GaussianMixture
 
 """
 A finite K-component Gaussian mixture model with density
@@ -22,9 +14,9 @@ Where:
 
 See also: [`fit!`](@ref)
 """
-mutable struct GaussianMixture{T <: Real}
+mutable struct GaussianMixture{T, U} <: ClusteringModel{T, U}
     # Number of components
-	K::Int8
+	K::U
     # Length of input vector
 	N::Integer
 	
@@ -53,7 +45,7 @@ mutable struct GaussianMixture{T <: Real}
 	
 	mask::BitVector
 
-	kmeans::Union{Missing, KMeans{T}}
+	kmeans::Union{Nothing, KMeans{T, U}}
 	
 	"""
     ```
@@ -65,23 +57,23 @@ mutable struct GaussianMixture{T <: Real}
 	- `K` - number of components
 	- `N` - length of vector
 	"""
-	function GaussianMixture(K::Integer, N::Integer, ::Type{T}=Float64;
+	function GaussianMixture(K::Integer, N::Integer, ::Type{T}=Float64, ::Type{U}=UInt8;
 			warm_start::Bool=false
-	) where T <: Real
+	)::GaussianMixture{T, U} where {T, U}
 		@assert K > 0
 		@assert N > 0
 		
 		mask = BitVector(undef, N)
 		mask .= false
 		
-		new{T}(
-			Int8(K), N,
+		new{T, U}(
+			convert(U, K), N,
 			false, warm_start, true, 0,
 			zeros(T, N), zeros(T, N),
 			zeros(T, K, N), zeros(T, K, N), zeros(T, K, N), # G
 			zeros(T, K), zeros(T, K), zeros(T, K), # p,μ,τ
 			mask,
-			missing # KMeans instance
+			nothing # KMeans instance
 		)
 	end
 end
@@ -171,7 +163,7 @@ end
 
 """
 ```
-function StatsBase.fit!(
+fit!(
     gm::GaussianMixture{T}, data::AbstractVector{T};
 	sort_by=:μ,
     tol=1e-3, eps=1e-10, maxiter::Integer=1000
@@ -191,7 +183,7 @@ Currently convergence is declared when the L1 norm
 between the latest and the previous distributions
 of the latent variable becomes less than `tol`.
 """
-function StatsBase.fit!(
+function fit!(
 	gm::GaussianMixture{T}, data::AbstractVector{T};
 	sort_by::Symbol=:μ,
     tol=1e-3, eps=1e-10, maxiter::Integer=1000
@@ -216,7 +208,7 @@ function StatsBase.fit!(
 	if gm.first_call || !gm.warm_start
 		gm.G_prev .= zero(T)
 
-		if gm.kmeans === missing
+		if gm.kmeans === nothing
 			gm.kmeans = KMeans(gm.K, gm.N)
 		end
 		fit!(gm.kmeans, data)
@@ -364,7 +356,7 @@ end
 
 Return most probable value of latent variable `z` for each element of `data`.
 """
-function StatsBase.predict(gmm::UnivariateGMM, data::AbstractVector)
+function predict(gmm::UnivariateGMM, data::AbstractVector)
 	G = predict_proba(gmm, data)
 	N = size(G, 2)
 

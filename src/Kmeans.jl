@@ -1,14 +1,9 @@
-export KMeans, inverse_transform
-
-import StatsBase
-using Statistics: mean, quantile
-
-using LoopVectorization
+export KMeans, inverse_transform, fit!
 
 """
 The state of the k-means algorithm.
 """
-mutable struct KMeans{T <: Real, U <: Unsigned}
+mutable struct KMeans{T, U} <: ClusteringModel{T, U}
 	# Number of clusters
 	K::U
 	# Length of input vector
@@ -70,7 +65,7 @@ l2_norm(x, y) = maximum(@turbo abs.(x .- y))
 
 """
 ```
-function StatsBase.fit!(
+function fit!(
 	km::KMeans{T, U}, data::AbstractVector{T};
 	maxiter::Integer=100, tol=1e-6,
 	init=:quantile, metric::Function=l2_norm
@@ -83,7 +78,7 @@ Find `km.K` clusters in vector `data` of length `km.N` using the k-means algorit
     - `:quantile` - `k`th center will be initialized with `k/km.K`th quantile of `data`
     - `:random` - each center is a random element of `data`
 """
-function StatsBase.fit!(
+function fit!(
 	km::KMeans{T, U}, data::AbstractVector{T};
 	maxiter::Integer=100, tol=1e-3,
 	init=:quantile, metric::Function=l2_norm

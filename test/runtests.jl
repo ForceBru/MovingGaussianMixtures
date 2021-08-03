@@ -3,7 +3,6 @@ using Plots
 
 using BenchmarkTools
 import Random
-using StatsBase # `fit!` function
 using SQLite # for saving moving models
 
 using MovingGaussianMixtures
