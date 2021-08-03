@@ -71,7 +71,7 @@ function initialize!(gm::GaussianMixture{T, U}, data::AbstractVector{T}, eps) wh
 
     if !(sum(gm.old.π) ≈ one(T))
         @. gm.old.π = clamp(gm.old.π, eps, one(T))
-        @. gm.π /= sum(gm.π)
+        gm.old.π ./= sum(gm.old.π)
     end
 end
 
@@ -94,9 +94,6 @@ function evidence!(
 	π::AbstractVector{T}, μ::AbstractVector{T}, σ::AbstractVector{T},
 	ε
 ) where T <: Real
-	@assert length(ev) == length(x)
-	@assert length(π) == length(μ) == length(σ)
-	
 	@inbounds for n ∈ eachindex(x)
 		s = zero(T)
 		for k ∈ eachindex(μ)
@@ -105,7 +102,7 @@ function evidence!(
 		ev[n] = s
 	end
 	
-	ev .= clamp.(ev, ε, Inf)
+	@. ev = clamp(ev, ε, Inf)
 	
 	nothing
 end
@@ -147,8 +144,7 @@ function compute_intermediates!(
 		end
 	end
 	
-	gm.a .= clamp.(em.a, ε, Inf)
-	gm.b .= clamp.(em.b .- em.tmp .^ 2 ./ em.a, ε, Inf)
+	@. gm.b = clamp(gm.b - gm.tmp^2 / clamp(gm.a, ε, Inf), ε, Inf)
 	
 	nothing
 end
@@ -159,7 +155,7 @@ function em_step!(
     compute_intermediates!(gm, data, eps)
     
     @. gm.new.μ = gm.tmp / gm.a
-    @. gm.new.π = gm.a / sum(gm.a)
+    gm.new.π .= gm.a ./ sum(gm.a)
     @. gm.new.σ = sqrt(gm.b / gm.a)
 
     nothing
@@ -167,7 +163,7 @@ end
 
 function fit!(
     gm::GaussianMixture{T, U}, data::AbstractVector{T};
-    maxiter::Integer=1000, tol=1e-3, eps=1e-10
+    maxiter::Integer=1000, tol=1e-5, eps=1e-10
 )::GaussianMixture{T, U} where {T, U}
     @assert length(data) == gm.N
     @assert tol > 0
@@ -184,6 +180,8 @@ function fit!(
     gm.n_iter = zero(U)
 
     (gm.first_call || !gm.warm_start) && initialize!(gm, data, eps)
+
+    gm.first_call = false
     
     em_step!(gm, data, eps)
     gm.old.π .= gm.new.π
