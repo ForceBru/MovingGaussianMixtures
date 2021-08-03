@@ -1,11 +1,43 @@
-using DelimitedFiles
+using DelimitedFiles, Test
 using Plots
+using Distributions
 
 using BenchmarkTools
 import Random
 using SQLite # for saving moving models
 
 using MovingGaussianMixtures
+
+function test_experimental_clearly_separable(π_true, μ_true, σ_true)
+    distr = UnivariateGMM(μ_true, σ_true, Categorical(π_true))
+    data = rand(distr, 1000)
+
+    gm = MovingGaussianMixtures.Experimental.GaussianMixture(
+        UInt(3), UInt(length(data))
+    )
+    fit!(gm, data)
+
+    # Enforce order to ensure identifiability
+    the_order = sortperm(gm.new.μ)
+
+    (
+        Estimate=(π=gm.new.π[the_order], μ=gm.new.μ[the_order], σ=gm.new.σ[the_order]),
+        True=(π=π_true, μ=μ_true, σ=σ_true)
+    )
+end
+
+@testset "Experimental GMM" begin
+    tolerance = 0.1
+
+    res = test_experimental_clearly_separable(
+        [.3, .4, .3], [-1., 0., 1.], [.1, .2, .1]
+    )
+    @show res
+
+    @test all(abs.(res.Estimate.π .- res.True.π) .< tolerance)
+    @test all(abs.(res.Estimate.μ .- res.True.μ) .< tolerance)
+    @test all(abs.(res.Estimate.σ .- res.True.σ) .< tolerance)
+end
 
 # Don't automatically show plots
 default(show=false)
