@@ -158,45 +158,68 @@ function mean_turbo!(x::AbstractVector{T}, G::AbstractMatrix{T}) where T <: Real
 	end
 end
 
+function initialize_kmeans!(
+	π::AbstractVector{T}, μ::AbstractVector{T}, σ::AbstractVector{T},
+	data::AbstractVector{T}, n_clusters::Integer, eps;
+	mask::Union{Nothing, BitVector, Vector{Bool}}=nothing
+) where T <: Real
+	N = length(data)
+	res = Clustering.kmeans(reshape(data, 1, :), Int(n_clusters))
+
+	μ .= res.centers[1, :]
+	π .= Clustering.counts(res) ./ N
+
+	assignments = Clustering.assignments(res)
+	if mask === nothing
+		mask = BitVector(undef, N)
+	end
+	@inbounds for k ∈ 1:n_clusters
+		@. mask = assignments == k
+
+		σ[k] = if !any(mask)
+			# Cluster is empty
+			eps
+		else
+			the_std = std(data[mask], corrected=false)
+
+			(the_std ≈ zero(T)) ? eps : the_std
+		end
+	end
+end
+
+function initialize_fuzzy_cmeans!(
+	π::AbstractVector{T}, μ::AbstractVector{T}, σ::AbstractVector{T},
+	data::AbstractVector{T}, n_clusters::Integer, eps;
+	m=2
+) where T <: Real
+	res = Clustering.fuzzy_cmeans(reshape(data, 1, :), Int(n_clusters), m)
+
+	μ .= res.centers[1, :]
+	sum!(π, res.weights' .^ m)
+	π ./= sum(π)
+
+	@tturbo for k ∈ 1:n_clusters
+		σ_ = eps
+		s = eps
+		for n ∈ eachindex(data)
+			# These are almost the same formulas as for EM
+			s += res.weights[n, k]^m
+			σ_ += (data[n] - μ[k])^2 * res.weights[n, k]^m
+		end
+		σ[k] = sqrt(σ_ / s)
+	end
+end
+
+
 function initialize!(gm::GaussianMixture{T}, data::AbstractVector{T}, init::Symbol, eps) where T
 	gm.G_prev .= zero(T)
 
 	if init == :kmeans
-		res = Clustering.kmeans(reshape(data, 1, :), Int(gm.K))
-
-		gm.μ .= res.centers[1, :]
-		gm.p .= Clustering.counts(res) ./ gm.N
-
-		assignments = Clustering.assignments(res)
-		@inbounds for k ∈ 1:gm.K
-			@. gm.mask = assignments == k
-
-			gm.τ[k] = if !any(gm.mask)
-				# `k`th cluster is empty
-				1 / eps
-			else
-				the_std = std(data[gm.mask], corrected=false)
-
-				(the_std ≈ zero(T)) ? (1 / eps) : (1 / the_std)
-			end
-		end
+		initialize_kmeans!(gm.p, gm.μ, gm.τ, data, gm.K, eps; mask=gm.mask)
+		@. gm.τ = one(T) / gm.τ
 	elseif init == :fuzzy_cmeans
-		res = Clustering.fuzzy_cmeans(reshape(data, 1, :), Int(gm.K), 2)
-
-		gm.μ .= res.centers[1, :]
-		sum!(gm.p, res.weights')
-		gm.p ./= sum(gm.p)
-
-		@turbo for k ∈ 1:gm.K
-			σ = eps
-			s = zero(T)
-			for n ∈ eachindex(data)
-				# These are the same formulas as for EM
-				s += res.weights[n, k]
-				σ += (data[n] - gm.μ[k])^2 * res.weights[n, k]
-			end
-			gm.τ[k] = sqrt(s / σ)
-		end
+		initialize_fuzzy_cmeans!(gm.p, gm.μ, gm.τ, data, gm.K, eps)
+		@. gm.τ = one(T) / gm.τ
 	else
 		@assert false "BUG: unexpected init=$init"
 	end
@@ -310,7 +333,7 @@ function fit!(
 end
 
 _not_fit_error() = ArgumentError(
-	"The mixture hasn't been estimated yet. Call `StatsBase.fit!(the_mixture, your_data)` first"
+	"The mixture hasn't been estimated yet. Call `fit!(the_mixture, your_data)` first"
 ) |> throw
 
 """
