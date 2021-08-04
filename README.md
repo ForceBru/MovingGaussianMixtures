@@ -8,7 +8,6 @@ The interface is similar to that of SciKit-Learn. To fit, for example, a Gaussia
 
 - `GaussianMixture(K, N; warm_start=false)` represents a Gaussian mixture model with `K` components that will be fit on data of length `N`.
 - `MovingGaussianMixture(K, win_size, step_size; warm_start=false)` represents a series of Gaussian mixtures with `K` components each fit on rolling windows of length `win_size` of the data.
-- `KMeans(K, N; warm_start=false)` represents the state of the `K`-means algorithm used to initialize the means of the GMM.
 
 Each model is fit using the `fit!` method provided by `StatsBase.jl`. For example:
 

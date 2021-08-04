@@ -206,7 +206,7 @@ end
 ```
 fit!(
     gm::GaussianMixture{T}, data::AbstractVector{T};
-	sort_by=:μ,
+	sort_by=:μ, init::Symbol=:kmeans,
     tol=1e-3, eps=1e-10, maxiter::Integer=1000
 ) where T <: Real
 ```
@@ -214,6 +214,7 @@ fit!(
 Fit the Gaussian mixture model `gm` to `data`.
 
 - Will sort the estimated parameters by the values of prameter `sort_by` (`:μ` or `:σ`) to ensure identifiability of the mixture
+- `init ∈ (:kmeans, :fuzzy_cmeans)` is the initialization method
 - `tol > 0` is the tolerance used in convergence checking
 - `eps > 0` is a very small number used to avoid division by zero
 - `maxiter > 0` is the maximum number of iterations to perform
