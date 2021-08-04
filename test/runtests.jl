@@ -54,12 +54,6 @@ const TABLE_NAME = "MovingMixture"
 
 @assert WIN_SIZE > 0
 
-# Fit regular k-means
-km = KMeans(N_COMPONENTS, WIN_SIZE)
-fit!(km, @view sample_data[1:WIN_SIZE])
-
-@show km.μ
-
 # Fit Gaussian mixture model
 gm = GaussianMixture(N_COMPONENTS, length(sample_data))
 fit!(gm, sample_data)

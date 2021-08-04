@@ -1,8 +1,9 @@
 module Experimental
 
 using Statistics
+import Clustering
 
-import ..ClusteringModel, ..KMeans, ..fit!
+import ..ClusteringModel, ..fit!
 
 mutable struct GaussianMixture{T, U} <: ClusteringModel{T, U}
     K::U
@@ -24,8 +25,6 @@ mutable struct GaussianMixture{T, U} <: ClusteringModel{T, U}
     new::NamedTuple{(:π, :μ, :σ), Tuple{Vector{T}, Vector{T}, Vector{T}}}
     evidence::Vector{T} # (N x 1)
 
-    kmeans::Union{Nothing, KMeans{T, U}}
-
     function GaussianMixture(K::U, N::U, ::Type{T}=Float64; warm_start::Bool=false) where { T <: Real, U <: Unsigned}
         @assert K > 0
         @assert N > 0
@@ -37,42 +36,59 @@ mutable struct GaussianMixture{T, U} <: ClusteringModel{T, U}
             similar(d), similar(d), similar(d), # intermediates
             (π=similar(d), μ=similar(d), σ=similar(d)),
             (π=similar(d), μ=similar(d), σ=similar(d)),
-            zeros(T, N), # evidence
-            nothing # no k-means
+            zeros(T, N) # evidence
         )
     end
 end
 
 """
-    initialize!(gm::GaussianMixture{T, U}, data::AbstractVector{T}) where {T, U}
+    initialize!(gm::GaussianMixture{T, U}, data::AbstractVector{T}, init::Symbol) where {T, U}
 
 Initialize the [`GaussianMixture`](@ref) using k-means.
 """
-function initialize!(gm::GaussianMixture{T, U}, data::AbstractVector{T}, eps) where {T, U}
-    if gm.kmeans === nothing
-        gm.kmeans = KMeans(gm.K, gm.N, T, U, warm_start=gm.warm_start)
-    end
-    fit!(gm.kmeans, data)
+function initialize!(gm::GaussianMixture{T}, data::AbstractVector{T}, init::Symbol) where T
+    (init ∈ (:kmeans, :fuzzy_cmeans)) ||
+		throw(ArgumentError("Supported initialization methods `init` are (:kmeans, :fuzzy_cmeans) (got $init)"))
 
-    gm.old.μ .= gm.kmeans.μ
-    for k ∈ 1:gm.K
-        mask = gm.kmeans.labels .== k
+    if init == :kmeans
+		res = Clustering.kmeans(reshape(data, 1, :), Int(gm.K))
 
-        gm.old.π[k] = sum(mask) / length(mask)
-        gm.old.σ[k] = if !any(mask)
-            # `k`th cluster is empty
-            eps
-        else
-            the_std = std(data[mask], corrected=false)
-            
-            (the_std ≈ zero(T)) ? eps : the_std
-        end
-    end
+		gm.old.μ .= res.centers[1, :]
+		gm.old.π .= Clustering.counts(res) ./ gm.N
 
-    if !(sum(gm.old.π) ≈ one(T))
-        @. gm.old.π = clamp(gm.old.π, eps, one(T))
-        gm.old.π ./= sum(gm.old.π)
-    end
+		assignments = Clustering.assignments(res)
+		@inbounds for k ∈ 1:gm.K
+			@. gm.mask = assignments == k
+
+			gm.old.σ[k] = if !any(gm.mask)
+				# `k`th cluster is empty
+				eps
+			else
+				the_std = std(data[gm.mask], corrected=false)
+
+				(the_std ≈ zero(T)) ? eps : the_std
+			end
+		end
+	elseif init == :fuzzy_cmeans
+		res = Clustering.fuzzy_cmeans(reshape(data, 1, :), Int(gm.K), 2)
+
+		gm.old.μ .= res.centers[1, :]
+		gm.old.π .= sum(res.weights, dims=1)[1, :]
+		gm.old.π ./= sum(gm.old.π)
+
+		@inbounds for k ∈ 1:gm.K
+			σ = zero(T)
+			s = zero(T)
+			for n ∈ eachindex(data)
+				# These are the same formulas as for EM
+				s += res.weights[n, k]
+				σ += (data[n] - gm.old.μ[k])^2 * res.weights[n, k]
+			end
+			gm.old.σ[k] = sqrt(σ / s)
+		end
+	else
+		@assert false "BUG: unexpected init=$init"
+	end
 end
 
 "Standard normal PDF"
@@ -163,6 +179,7 @@ end
 
 function fit!(
     gm::GaussianMixture{T, U}, data::AbstractVector{T};
+    init::Symbol=:fuzzy_cmeans,
     maxiter::Integer=1000, tol=1e-5, eps=1e-10
 )::GaussianMixture{T, U} where {T, U}
     @assert length(data) == gm.N
@@ -179,7 +196,7 @@ function fit!(
     gm.converged = false
     gm.n_iter = zero(U)
 
-    (gm.first_call || !gm.warm_start) && initialize!(gm, data, eps)
+    (gm.first_call || !gm.warm_start) && initialize!(gm, data, init)
 
     gm.first_call = false
     

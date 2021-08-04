@@ -44,8 +44,6 @@ mutable struct GaussianMixture{T, U} <: ClusteringModel{T, U}
 	τ::Vector{T} # = 1/σ
 	
 	mask::BitVector
-
-	kmeans::Union{Nothing, KMeans{T, U}}
 	
 	"""
     ```
@@ -72,8 +70,7 @@ mutable struct GaussianMixture{T, U} <: ClusteringModel{T, U}
 			zeros(T, N), zeros(T, N),
 			zeros(T, K, N), zeros(T, K, N), zeros(T, K, N), # G
 			zeros(T, K), zeros(T, K), zeros(T, K), # p,μ,τ
-			mask,
-			nothing # KMeans instance
+			mask
 		)
 	end
 end
@@ -161,6 +158,53 @@ function mean_turbo!(x::AbstractVector{T}, G::AbstractMatrix{T}) where T <: Real
 	end
 end
 
+function initialize!(gm::GaussianMixture{T}, data::AbstractVector{T}, init::Symbol, eps) where T
+	(init ∈ (:kmeans, :fuzzy_cmeans)) ||
+		throw(ArgumentError("Supported initialization methods `init` are (:kmeans, :fuzzy_cmeans) (got $init)"))
+
+	gm.G_prev .= zero(T)
+
+	if init == :kmeans
+		res = Clustering.kmeans(reshape(data, 1, :), Int(gm.K))
+
+		gm.μ .= res.centers[1, :]
+		gm.p .= Clustering.counts(res) ./ gm.N
+
+		assignments = Clustering.assignments(res)
+		@inbounds for k ∈ 1:gm.K
+			@. gm.mask = assignments == k
+
+			gm.τ[k] = if !any(gm.mask)
+				# `k`th cluster is empty
+				1 / eps
+			else
+				the_std = std(data[gm.mask], corrected=false)
+
+				(the_std ≈ zero(T)) ? (1 / eps) : (1 / the_std)
+			end
+		end
+	elseif init == :fuzzy_cmeans
+		res = Clustering.fuzzy_cmeans(reshape(data, 1, :), Int(gm.K), 2)
+
+		gm.μ .= res.centers[1, :]
+		sum!(gm.p, res.weights')
+		gm.p ./= sum(gm.p)
+
+		@inbounds for k ∈ 1:gm.K
+			σ = zero(T)
+			s = zero(T)
+			for n ∈ eachindex(data)
+				# These are the same formulas as for EM
+				s += res.weights[n, k]
+				σ += (data[n] - gm.μ[k])^2 * res.weights[n, k]
+			end
+			gm.τ[k] = sqrt(s / σ)
+		end
+	else
+		@assert false "BUG: unexpected init=$init"
+	end
+end
+
 """
 ```
 fit!(
@@ -185,11 +229,13 @@ of the latent variable becomes less than `tol`.
 """
 function fit!(
 	gm::GaussianMixture{T}, data::AbstractVector{T};
-	sort_by::Symbol=:μ,
+	sort_by::Symbol=:μ, init::Symbol=:kmeans,
     tol=1e-3, eps=1e-10, maxiter::Integer=1000
 ) where T <: Real
 	(sort_by ∈ (:p, :μ, :σ)) ||
 		throw(ArgumentError("Parameters can only be sorted by `sort_by ∈ (:p, :μ, :σ)` (got $sort_by)"))
+	(init ∈ (:kmeans, :fuzzy_cmeans)) ||
+		throw(ArgumentError("Supported initialization methods `init` are (:kmeans, :fuzzy_cmeans) (got $init)"))
 	(tol > 0) ||
 		throw(ArgumentError("Tolerance `tol` must be strictly positive (got $tol)"))
 	(eps > 0) ||
@@ -205,34 +251,7 @@ function fit!(
 	gm.n_iter = 0
 	
 	# Initialize mixture parameters
-	if gm.first_call || !gm.warm_start
-		gm.G_prev .= zero(T)
-
-		if gm.kmeans === nothing
-			gm.kmeans = KMeans(gm.K, gm.N)
-		end
-		fit!(gm.kmeans, data)
-		
-		gm.μ .= gm.kmeans.μ
-		@inbounds for k ∈ 1:gm.K
-			@turbo gm.mask .= gm.kmeans.labels .== k
-			gm.p[k] = sum(gm.mask) / gm.N
-			
-			gm.τ[k] = if !any(gm.mask)
-				# `k`th cluster is empty
-				eps
-			else
-				the_std = std(data[gm.mask], corrected=false)
-
-				(the_std ≈ zero(T)) ? (1 / eps) : (1 / the_std)
-			end
-		end
-
-		if !(sum(gm.p) ≈ 1)
-			@. gm.p = clamp(gm.p, eps, one(T))
-			@. gm.p /= sum(gm.p)
-		end
-	end
+	(gm.first_call || !gm.warm_start) && initialize!(gm, data, init, eps)
 	
 	# @assert !any(isnan.(gm.σ)) "Got NaN: $(gm.σ)"
 	

@@ -1,6 +1,6 @@
 module MovingGaussianMixtures
 
-export ClusteringModel, KMeans, GaussianMixture, MovingGaussianMixture
+export ClusteringModel, GaussianMixture, MovingGaussianMixture
 export distribution, params # obtaining results
 export nconverged, converged_pct # convergence monitoring
 export fit!, predict, predict_proba
@@ -9,6 +9,7 @@ export StandardScaler, transform, inverse_transform # scaling data
 
 # Statistics
 using Statistics
+import Clustering
 # Must use `import` because these functions will be overriden
 import StatsBase: StatisticalModel, params, fit!, predict
 using Distributions
@@ -29,10 +30,10 @@ Abstact type of clustering models (`KMeans`, `GaussianMixture`, `MovingGaussianM
 - `U` is the type of the number of components (the default is something small like `UInt8`)
 """
 abstract type ClusteringModel{T <: Real, U <: Unsigned} <: StatisticalModel end
+abstract type AbstractGaussianMixture{T, U} <: ClusteringModel{T, U} end
 
 include("Utils.jl")
 
-include("Kmeans.jl")
 include("GaussianMixture.jl")
 include("Moving.jl")
 include("Experimental.jl")
