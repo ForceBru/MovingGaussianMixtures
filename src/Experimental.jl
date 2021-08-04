@@ -6,19 +6,19 @@ import Distributions: UnivariateGMM, Categorical
 
 using LoopVectorization
 
-import ..AbstractGaussianMixture, .._not_fit_error
+import ..AbstractGaussianMixture, .._not_fit_error, ..initialize_kmeans!, ..initialize_fuzzy_cmeans!
 
 # To be overriden
 import ..fit!, ..distribution, ..nconverged, ..converged_pct
 
-mutable struct GaussianMixture{T, U} <: AbstractGaussianMixture{T, U}
-    K::U
-    N::U
+mutable struct GaussianMixture{T} <: AbstractGaussianMixture{T}
+    K::Int
+    N::Int
 
     converged::Bool
 	warm_start::Bool
 	first_call::Bool
-	n_iter::U
+	n_iter::Int
 
     # Intermediate values, as in Hathaway
     # (K x 1) vectors
@@ -31,14 +31,17 @@ mutable struct GaussianMixture{T, U} <: AbstractGaussianMixture{T, U}
     new::NamedTuple{(:π, :μ, :σ), Tuple{Vector{T}, Vector{T}, Vector{T}}}
     evidence::Vector{T} # (N x 1)
 
-    function GaussianMixture(K::U, N::U, ::Type{T}=Float64; warm_start::Bool=false) where { T <: Real, U <: Unsigned}
+    function GaussianMixture(K::Integer, N::Integer, ::Type{T}=Float64; warm_start::Bool=false) where T <: Real
         @assert K > 0
         @assert N > 0
 
+        K = Int(K)
+        N = Int(N)
+
         d = zeros(T, K)
-        new{T, U}(
+        new{T}(
             K, N,
-            false, warm_start, true, zero(U),
+            false, warm_start, true, 0,
             similar(d), similar(d), similar(d), # intermediates
             (π=similar(d), μ=similar(d), σ=similar(d)),
             (π=similar(d), μ=similar(d), σ=similar(d)),
@@ -47,12 +50,8 @@ mutable struct GaussianMixture{T, U} <: AbstractGaussianMixture{T, U}
     end
 end
 
-function GaussianMixture(K::Signed, N::Signed, TYP::Type{T}=Float64; warm_start::Bool=false) where T <: Real
-    GaussianMixture(UInt(K), UInt(N), TYP; warm_start)
-end
-
 """
-    initialize!(gm::GaussianMixture{T, U}, data::AbstractVector{T}, init::Symbol) where {T, U}
+    initialize!(gm::GaussianMixture{T}, data::AbstractVector{T}, init::Symbol, eps) where T
 
 Initialize the [`GaussianMixture`](@ref) using k-means.
 """
@@ -61,42 +60,9 @@ function initialize!(gm::GaussianMixture{T}, data::AbstractVector{T}, init::Symb
 		throw(ArgumentError("Supported initialization methods `init` are (:kmeans, :fuzzy_cmeans) (got $init)"))
 
     if init == :kmeans
-		res = Clustering.kmeans(reshape(data, 1, :), Int(gm.K))
-
-		gm.old.μ .= res.centers[1, :]
-		gm.old.π .= Clustering.counts(res) ./ gm.N
-
-		assignments = Clustering.assignments(res)
-        mask::BitVector = BitVector(undef, gm.N)
-		@inbounds for k ∈ 1:gm.K
-			@. mask = assignments == k
-
-			gm.old.σ[k] = if !any(mask)
-				# `k`th cluster is empty
-				eps
-			else
-				the_std = std(data[mask], corrected=false)
-
-				(the_std ≈ zero(T)) ? eps : the_std
-			end
-		end
+        initialize_kmeans!(gm.old.π, gm.old.μ, gm.old.σ, data, gm.K, eps)
 	elseif init == :fuzzy_cmeans
-		res = Clustering.fuzzy_cmeans(reshape(data, 1, :), Int(gm.K), 2)
-
-		gm.old.μ .= res.centers[1, :]
-		gm.old.π .= sum(res.weights, dims=1)[1, :]
-		gm.old.π ./= sum(gm.old.π)
-
-		@tturbo for k ∈ 1:gm.K
-			σ = zero(T)
-			s = eps
-			for n ∈ eachindex(data)
-				# These are the same formulas as for EM
-				s += res.weights[n, k]
-				σ += (data[n] - gm.old.μ[k])^2 * res.weights[n, k]
-			end
-			gm.old.σ[k] = sqrt(σ / s)
-		end
+        initialize_fuzzy_cmeans!(gm.old.π, gm.old.μ, gm.old.σ, data, gm.K, eps)
 	else
 		@assert false "BUG: unexpected init=$init"
 	end
@@ -112,8 +78,7 @@ component_pdf(x, μ, σ) = ϕ((x - μ) / σ) / σ
 Computes evidence:
 
 ```math
-e_n = ∑_{k=1}^K π_k p(x_n, μ_k, σ_k)
-n = 1,N
+∑_n ∑_{k=1}^K π_k p(x_n, μ_k, σ_k)
 ```
 """
 function evidence!(
@@ -177,8 +142,8 @@ function compute_intermediates!(
 end
 
 function em_step!(
-    gm::GaussianMixture{T, U}, data::AbstractVector{T}, eps
-) where {T, U}
+    gm::GaussianMixture{T}, data::AbstractVector{T}, eps
+) where T
     if any(≈(zero(T)), gm.old.σ)
         gm.converged = false
 
@@ -195,10 +160,10 @@ function em_step!(
 end
 
 function fit!(
-    gm::GaussianMixture{T, U}, data::AbstractVector{T};
+    gm::GaussianMixture{T}, data::AbstractVector{T};
     init::Symbol=:fuzzy_cmeans,
     maxiter::Integer=1000, tol=1e-3, eps=1e-10
-)::GaussianMixture{T, U} where {T, U}
+)::GaussianMixture{T} where T
     @assert length(data) == gm.N
     @assert tol > 0
     @assert eps > 0
@@ -219,7 +184,7 @@ function fit!(
     end
 
     gm.converged = false
-    gm.n_iter = zero(U)
+    gm.n_iter = 0
 
     (gm.first_call || !gm.warm_start) && initialize!(gm, data, init, eps)
 

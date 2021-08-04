@@ -22,15 +22,15 @@ using ProgressMeter
 
 
 """
-    ClusteringModel{T <: Real, U <: Unsigned} <: StatisticalModel
+    ClusteringModel{T <: Real} <: StatisticalModel
 
 Abstract type of clustering models (`KMeans`, `GaussianMixture`, `MovingGaussianMixture`, etc)
 
 - `T` is the type of data being processed (usually `AbstractFloat`)
 - `U` is the type of the number of components (the default is something small like `UInt8`)
 """
-abstract type ClusteringModel{T <: Real, U <: Unsigned} <: StatisticalModel end
-abstract type AbstractGaussianMixture{T, U} <: ClusteringModel{T, U} end
+abstract type ClusteringModel{T <: Real} <: StatisticalModel end
+abstract type AbstractGaussianMixture{T} <: ClusteringModel{T} end
 
 include("Utils.jl")
 

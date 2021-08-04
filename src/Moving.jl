@@ -2,9 +2,9 @@
 A sequence of Gaussian mixture models ([`GaussianMixture`](@ref))
 estimated on moving windows over the data.
 """
-mutable struct MovingGaussianMixture{T, U} <: ClusteringModel{T, U}
+mutable struct MovingGaussianMixture{T} <: ClusteringModel{T}
     range::StepRange
-    gm::AbstractGaussianMixture{T, U}
+    gm::AbstractGaussianMixture{T}
 
     n_iter::Vector{Int}
     converged::BitVector
@@ -56,7 +56,7 @@ function fit!(
 
     mgm.n_iter = Vector{eltype(mgm.n_iter)}(undef, length(mgm.range))
     mgm.converged = BitVector(undef, length(mgm.range))
-    mgm.distributions = Vector{UnivariateGMM}(undef, length(mgm.range))
+    mgm.distributions = Vector{eltype(mgm.distributions)}(undef, length(mgm.range))
 
     progress = Progress(
         length(mgm.range),

@@ -14,11 +14,11 @@ Where:
 
 See also: [`fit!`](@ref)
 """
-mutable struct GaussianMixture{T, U} <: AbstractGaussianMixture{T, U}
+mutable struct GaussianMixture{T} <: AbstractGaussianMixture{T}
     # Number of components
-	K::U
+	K::Int
     # Length of input vector
-	N::Integer
+	N::Int
 	
 	converged::Bool
 	warm_start::Bool
@@ -55,17 +55,20 @@ mutable struct GaussianMixture{T, U} <: AbstractGaussianMixture{T, U}
 	- `K` - number of components
 	- `N` - length of vector
 	"""
-	function GaussianMixture(K::Integer, N::Integer, ::Type{T}=Float64, ::Type{U}=UInt8;
+	function GaussianMixture(K::Integer, N::Integer, ::Type{T}=Float64;
 			warm_start::Bool=false
-	)::GaussianMixture{T, U} where {T, U}
+	)::GaussianMixture{T} where T
 		@assert K > 0
 		@assert N > 0
+
+		K = Int(K)
+		N = Int(N)
 		
 		mask = BitVector(undef, N)
 		mask .= false
 		
-		new{T, U}(
-			convert(U, K), N,
+		new{T}(
+			K, N,
 			false, warm_start, true, 0,
 			zeros(T, N), zeros(T, N),
 			zeros(T, K, N), zeros(T, K, N), zeros(T, K, N), # G
