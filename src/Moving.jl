@@ -4,7 +4,7 @@ estimated on moving windows over the data.
 """
 mutable struct MovingGaussianMixture{T, U} <: ClusteringModel{T, U}
     range::StepRange
-    gm::GaussianMixture{T, U}
+    gm::AbstractGaussianMixture{T, U}
 
     n_iter::Vector{Int}
     converged::BitVector
@@ -26,11 +26,12 @@ Initialize the moving Gaussian mixture.
 - `warm_start` - use estimates from the previous window as starting points for the current window (`true`) or not
 """
 function MovingGaussianMixture(K::Integer, win_size::Integer, step_size::Integer, ::Type{T}=Float64;
+    build_mixture=GaussianMixture,
     warm_start::Bool=false
 ) where T <: Real
     @assert step_size > 0
 
-    gm = GaussianMixture(K, win_size, T, warm_start=warm_start)
+    gm = build_mixture(K, win_size, T, warm_start=warm_start)
 
     MovingGaussianMixture(gm.N:step_size:1, gm, Int[], BitVector(), UnivariateGMM[])
 end
@@ -71,7 +72,7 @@ function fit!(
         fit!(mgm.gm, window; gm_params...)
 
         mgm.n_iter[i] = mgm.gm.n_iter
-        mgm.converged[i] = mgm.gm.converged
+        mgm.converged[i] = nconverged(mgm.gm)
         mgm.distributions[i] = distribution(mgm.gm)
 
         (!quiet) && next!(progress)
