@@ -68,7 +68,7 @@ begin
 end
 
 # Fit the same model, but initialized with fuzzy C-means
-begin
+let
     gm = GaussianMixture(N_COMPONENTS, length(sample_data))
     fit!(gm, sample_data, init=:fuzzy_cmeans)
 

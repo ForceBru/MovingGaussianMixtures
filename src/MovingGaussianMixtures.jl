@@ -24,7 +24,7 @@ using ProgressMeter
 """
     ClusteringModel{T <: Real, U <: Unsigned} <: StatisticalModel
 
-Abstact type of clustering models (`KMeans`, `GaussianMixture`, `MovingGaussianMixture`, etc)
+Abstract type of clustering models (`KMeans`, `GaussianMixture`, `MovingGaussianMixture`, etc)
 
 - `T` is the type of data being processed (usually `AbstractFloat`)
 - `U` is the type of the number of components (the default is something small like `UInt8`)
