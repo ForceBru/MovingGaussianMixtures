@@ -159,9 +159,6 @@ function mean_turbo!(x::AbstractVector{T}, G::AbstractMatrix{T}) where T <: Real
 end
 
 function initialize!(gm::GaussianMixture{T}, data::AbstractVector{T}, init::Symbol, eps) where T
-	(init ∈ (:kmeans, :fuzzy_cmeans)) ||
-		throw(ArgumentError("Supported initialization methods `init` are (:kmeans, :fuzzy_cmeans) (got $init)"))
-
 	gm.G_prev .= zero(T)
 
 	if init == :kmeans
