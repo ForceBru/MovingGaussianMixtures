@@ -6,9 +6,12 @@ import Distributions: UnivariateGMM, Categorical
 
 using LoopVectorization
 
-import ..ClusteringModel, ..fit!
+import ..AbstractGaussianMixture, .._not_fit_error
 
-mutable struct GaussianMixture{T, U} <: ClusteringModel{T, U}
+# To be overriden
+import ..fit!, ..distribution, ..nconverged, ..converged_pct
+
+mutable struct GaussianMixture{T, U} <: AbstractGaussianMixture{T, U}
     K::U
     N::U
 
@@ -252,11 +255,11 @@ end
 
 # ===== Obtain results =====
 """
-    distribution(gm::GaussianMixture; eps=1e-10)
+    distribution(gm::GaussianMixture)
 
 Get the Distributions.jl `UnivariateGMM` of this `GaussianMixture`.
 """
-distribution(gm::GaussianMixture; eps=1e-10) =
+distribution(gm::GaussianMixture) =
 	if gm.first_call
 		_not_fit_error()
 	else
@@ -265,6 +268,9 @@ distribution(gm::GaussianMixture; eps=1e-10) =
 			copy(gm.new.μ), copy(gm.new.σ), Categorical(copy(gm.new.π))
 		)
 	end
+
+nconverged(gm::GaussianMixture) = Int(gm.converged)
+converged_pct(gm::GaussianMixture) = Float64(nconverged(gm)) * 100
 
 end
 

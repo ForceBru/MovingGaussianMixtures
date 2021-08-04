@@ -14,7 +14,7 @@ Where:
 
 See also: [`fit!`](@ref)
 """
-mutable struct GaussianMixture{T, U} <: ClusteringModel{T, U}
+mutable struct GaussianMixture{T, U} <: AbstractGaussianMixture{T, U}
     # Number of components
 	K::U
     # Length of input vector
