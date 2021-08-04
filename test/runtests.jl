@@ -13,7 +13,7 @@ function test_experimental_clearly_separable(π_true, μ_true, σ_true)
     data = rand(distr, 1000)
 
     gm = MovingGaussianMixtures.Experimental.GaussianMixture(
-        UInt(3), UInt(length(data))
+        3, length(data)
     )
     fit!(gm, data)
 
