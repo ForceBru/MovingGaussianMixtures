@@ -26,8 +26,7 @@ Initialize the moving Gaussian mixture.
 - `warm_start` - use estimates from the previous window as starting points for the current window (`true`) or not
 """
 function MovingGaussianMixture(K::Integer, win_size::Integer, step_size::Integer, ::Type{T}=Float64;
-    build_mixture=GaussianMixture,
-    warm_start::Bool=false
+    build_mixture=GaussianMixture, warm_start::Bool=false
 ) where T <: Real
     @assert step_size > 0
 
