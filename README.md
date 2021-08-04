@@ -139,6 +139,8 @@ For code and sample data see [tests](test/).
 
 ![em](test/img/mixture_em.png)
 
+![em_cmeans](test/img/mixture_em_cmeans.png)
+
 ### Estimation with EM across 7 windows
 
 ```

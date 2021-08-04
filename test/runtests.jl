@@ -55,15 +55,30 @@ const TABLE_NAME = "MovingMixture"
 @assert WIN_SIZE > 0
 
 # Fit Gaussian mixture model
-gm = GaussianMixture(N_COMPONENTS, length(sample_data))
-fit!(gm, sample_data)
+begin
+    gm = GaussianMixture(N_COMPONENTS, length(sample_data))
+    fit!(gm, sample_data)
 
-distr = distribution(gm)
-x = range(minimum(sample_data), maximum(sample_data), length=500)
-plt = histogram(sample_data, normalized=true, linewidth=0, alpha=.5)
-log_lik = log_likelihood(distr, sample_data)
-plot!(plt, distr, x, title="Log-likelihood: $(round(log_lik, digits=5))")
-savefig(plt, "img/mixture_em.png")
+    distr = distribution(gm)
+    x = range(minimum(sample_data), maximum(sample_data), length=500)
+    plt = histogram(sample_data, normalized=true, linewidth=0, alpha=.5)
+    log_lik = log_likelihood(distr, sample_data)
+    plot!(plt, distr, x, title="Log-likelihood: $(round(log_lik, digits=5)); init: k-means")
+    savefig(plt, "img/mixture_em.png")
+end
+
+# Fit the same model, but initialized with fuzzy C-means
+begin
+    gm = GaussianMixture(N_COMPONENTS, length(sample_data))
+    fit!(gm, sample_data, init=:fuzzy_cmeans)
+
+    distr = distribution(gm)
+    x = range(minimum(sample_data), maximum(sample_data), length=500)
+    plt = histogram(sample_data, normalized=true, linewidth=0, alpha=.5)
+    log_lik = log_likelihood(distr, sample_data)
+    plot!(plt, distr, x, title="Log-likelihood: $(round(log_lik, digits=5)); init: C-means")
+    savefig(plt, "img/mixture_em_cmeans.png")
+end
 
 @show rand(distr)
 
