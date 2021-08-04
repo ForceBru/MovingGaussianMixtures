@@ -68,6 +68,22 @@ function initialize!(gm::GaussianMixture{T}, data::AbstractVector{T}, init::Symb
 	end
 end
 
+function Base.sort!(gm::GaussianMixture; by::Symbol=:μ)
+    the_order = sortperm(
+        (π=gm.new.π, μ=gm.new.μ, σ=gm.new.σ)[by]
+    )
+
+    gm.new.π .= gm.new.π[the_order]
+    gm.new.μ .= gm.new.μ[the_order]
+    gm.new.σ .= gm.new.σ[the_order]
+
+    gm.old.π .= gm.old.π[the_order]
+    gm.old.μ .= gm.old.μ[the_order]
+    gm.old.σ .= gm.old.σ[the_order]
+
+    nothing
+end
+
 "Standard normal PDF"
 ϕ(x) = exp(-x^2 / 2) / sqrt(2π)
 	
@@ -161,7 +177,7 @@ end
 
 function fit!(
     gm::GaussianMixture{T}, data::AbstractVector{T};
-    init::Symbol=:fuzzy_cmeans,
+    init::Symbol=:fuzzy_cmeans, sort_by::Symbol=:μ,
     maxiter::Integer=1000, tol=1e-3, eps=1e-10
 )::GaussianMixture{T} where T
     @assert length(data) == gm.N
@@ -195,6 +211,10 @@ function fit!(
 	gm.old.μ .= gm.new.μ
 	gm.old.σ .= gm.new.σ
 
+    # This is here just to error out early
+    # in case `sort_by` is invalid
+    sort!(gm, by=sort_by)
+
     for i ∈ 1:maxiter
         em_step!(gm, data, eps)
 
@@ -214,6 +234,8 @@ function fit!(
     if !gm.converged
         gm.n_iter = convert(typeof(gm.n_iter), maxiter)
     end
+
+    sort!(gm)
 
     gm
 end

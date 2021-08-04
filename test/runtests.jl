@@ -96,7 +96,10 @@ display(bench_res)
 println()
 
 # Fit moving Gaussian mixture
-mgm = MovingGaussianMixture(N_COMPONENTS, WIN_SIZE, STEP_SIZE)
+mgm = MovingGaussianMixture(
+    N_COMPONENTS, WIN_SIZE, STEP_SIZE,
+    build_mixture=MovingGaussianMixtures.Experimental.GaussianMixture
+)
 fit!(mgm, sample_data)
 
 @show converged_pct(mgm)
