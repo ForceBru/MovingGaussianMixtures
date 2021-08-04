@@ -187,8 +187,8 @@ function initialize!(gm::GaussianMixture{T}, data::AbstractVector{T}, init::Symb
 		sum!(gm.p, res.weights')
 		gm.p ./= sum(gm.p)
 
-		@inbounds for k ∈ 1:gm.K
-			σ = zero(T)
+		@turbo for k ∈ 1:gm.K
+			σ = eps
 			s = zero(T)
 			for n ∈ eachindex(data)
 				# These are the same formulas as for EM
@@ -200,6 +200,8 @@ function initialize!(gm::GaussianMixture{T}, data::AbstractVector{T}, init::Symb
 	else
 		@assert false "BUG: unexpected init=$init"
 	end
+
+	@debug "Init method: $init" p=gm.p μ=gm.μ τ=gm.τ
 end
 
 """
