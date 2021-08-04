@@ -44,7 +44,7 @@ default(show=false)
 ENV["GKSwstype"]="nul"
 gr()
 
-const sample_data = readdlm("sample_data.csv")[:, 1]
+const sample_data = readdlm("sample_data.csv")[:, 1] .* 10_000
 
 const N_COMPONENTS = 7
 const STEP_SIZE = 4
