@@ -2,6 +2,9 @@ module Experimental
 
 using Statistics
 import Clustering
+import Distributions: UnivariateGMM, Categorical
+
+using LoopVectorization
 
 import ..ClusteringModel, ..fit!
 
@@ -41,12 +44,16 @@ mutable struct GaussianMixture{T, U} <: ClusteringModel{T, U}
     end
 end
 
+function GaussianMixture(K::Signed, N::Signed, TYP::Type{T}=Float64; warm_start::Bool=false) where T <: Real
+    GaussianMixture(UInt(K), UInt(N), TYP; warm_start)
+end
+
 """
     initialize!(gm::GaussianMixture{T, U}, data::AbstractVector{T}, init::Symbol) where {T, U}
 
 Initialize the [`GaussianMixture`](@ref) using k-means.
 """
-function initialize!(gm::GaussianMixture{T}, data::AbstractVector{T}, init::Symbol) where T
+function initialize!(gm::GaussianMixture{T}, data::AbstractVector{T}, init::Symbol, eps) where T
     (init ∈ (:kmeans, :fuzzy_cmeans)) ||
 		throw(ArgumentError("Supported initialization methods `init` are (:kmeans, :fuzzy_cmeans) (got $init)"))
 
@@ -57,14 +64,15 @@ function initialize!(gm::GaussianMixture{T}, data::AbstractVector{T}, init::Symb
 		gm.old.π .= Clustering.counts(res) ./ gm.N
 
 		assignments = Clustering.assignments(res)
+        mask::BitVector = BitVector(undef, gm.N)
 		@inbounds for k ∈ 1:gm.K
-			@. gm.mask = assignments == k
+			@. mask = assignments == k
 
-			gm.old.σ[k] = if !any(gm.mask)
+			gm.old.σ[k] = if !any(mask)
 				# `k`th cluster is empty
 				eps
 			else
-				the_std = std(data[gm.mask], corrected=false)
+				the_std = std(data[mask], corrected=false)
 
 				(the_std ≈ zero(T)) ? eps : the_std
 			end
@@ -76,9 +84,9 @@ function initialize!(gm::GaussianMixture{T}, data::AbstractVector{T}, init::Symb
 		gm.old.π .= sum(res.weights, dims=1)[1, :]
 		gm.old.π ./= sum(gm.old.π)
 
-		@inbounds for k ∈ 1:gm.K
+		@tturbo for k ∈ 1:gm.K
 			σ = zero(T)
-			s = zero(T)
+			s = eps
 			for n ∈ eachindex(data)
 				# These are the same formulas as for EM
 				s += res.weights[n, k]
@@ -110,7 +118,7 @@ function evidence!(
 	π::AbstractVector{T}, μ::AbstractVector{T}, σ::AbstractVector{T},
 	ε
 ) where T <: Real
-	@inbounds for n ∈ eachindex(x)
+	@tturbo for n ∈ eachindex(x)
 		s = zero(T)
 		for k ∈ eachindex(μ)
 			s += π[k] * component_pdf(x[n], μ[k], σ[k])
@@ -118,7 +126,7 @@ function evidence!(
 		ev[n] = s
 	end
 	
-	@. ev = clamp(ev, ε, Inf)
+	@tturbo @. ev = clamp(ev, ε, Inf)
 	
 	nothing
 end
@@ -147,8 +155,8 @@ function compute_intermediates!(
 ) where T <: Real
 	evidence!(gm.evidence, x, gm.old.π, gm.old.μ, gm.old.σ, ε)
 	
-	@inbounds for k ∈ eachindex(gm.old.π)
-		gm.a[k] = zero(T)
+	@tturbo for k ∈ eachindex(gm.old.π)
+	    gm.a[k] = zero(T)
 		gm.b[k] = zero(T)
 		gm.tmp[k] = zero(T)
 		for n ∈ eachindex(x)
@@ -160,7 +168,7 @@ function compute_intermediates!(
 		end
 	end
 	
-	@. gm.b = clamp(gm.b - gm.tmp^2 / clamp(gm.a, ε, Inf), ε, Inf)
+	@turbo @. gm.b = clamp(gm.b - gm.tmp^2 / clamp(gm.a, ε, Inf), ε, Inf)
 	
 	nothing
 end
@@ -168,11 +176,17 @@ end
 function em_step!(
     gm::GaussianMixture{T, U}, data::AbstractVector{T}, eps
 ) where {T, U}
+    if any(≈(zero(T)), gm.old.σ)
+        gm.converged = false
+
+        throw(DomainError(gm.old.σ, "One of the standard deviations is too close to zero"))
+    end
+
     compute_intermediates!(gm, data, eps)
     
-    @. gm.new.μ = gm.tmp / gm.a
+    @turbo @. gm.new.μ = gm.tmp / gm.a
     gm.new.π .= gm.a ./ sum(gm.a)
-    @. gm.new.σ = sqrt(gm.b / gm.a)
+    @turbo @. gm.new.σ = sqrt(gm.b / gm.a)
 
     nothing
 end
@@ -180,23 +194,31 @@ end
 function fit!(
     gm::GaussianMixture{T, U}, data::AbstractVector{T};
     init::Symbol=:fuzzy_cmeans,
-    maxiter::Integer=1000, tol=1e-5, eps=1e-10
+    maxiter::Integer=1000, tol=1e-3, eps=1e-10
 )::GaussianMixture{T, U} where {T, U}
     @assert length(data) == gm.N
     @assert tol > 0
     @assert eps > 0
 
     r(x, y) = abs(x - y) / abs(y)
-    metric() = max(
-        maximum(r.(gm.new.π, gm.old.π)),
-        maximum(r.(gm.new.μ, gm.old.μ)),
-        maximum(r.(gm.new.σ, gm.old.σ)),
-    )
+    function metric()
+        # Don't allocate!
+        @. gm.tmp = r(gm.new.π, gm.old.π)
+        dπ = maximum(gm.tmp)
+
+        @. gm.tmp = r(gm.new.μ, gm.old.μ)
+        dμ = maximum(gm.tmp)
+
+        @. gm.tmp = r(gm.new.σ, gm.old.σ)
+        dσ = maximum(gm.tmp)
+
+        max(dπ, dμ, dσ)
+    end
 
     gm.converged = false
     gm.n_iter = zero(U)
 
-    (gm.first_call || !gm.warm_start) && initialize!(gm, data, init)
+    (gm.first_call || !gm.warm_start) && initialize!(gm, data, init, eps)
 
     gm.first_call = false
     
@@ -227,6 +249,22 @@ function fit!(
 
     gm
 end
+
+# ===== Obtain results =====
+"""
+    distribution(gm::GaussianMixture; eps=1e-10)
+
+Get the Distributions.jl `UnivariateGMM` of this `GaussianMixture`.
+"""
+distribution(gm::GaussianMixture; eps=1e-10) =
+	if gm.first_call
+		_not_fit_error()
+	else
+		UnivariateGMM(
+			# Copy everything! Otherwise the params will be SHARED!
+			copy(gm.new.μ), copy(gm.new.σ), Categorical(copy(gm.new.π))
+		)
+	end
 
 end
 
