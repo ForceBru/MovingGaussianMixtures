@@ -31,6 +31,10 @@ mutable struct GaussianMixture{T} <: AbstractGaussianMixture{T}
     new::NamedTuple{(:π, :μ, :σ), Tuple{Vector{T}, Vector{T}, Vector{T}}}
     evidence::Vector{T} # (N x 1)
 
+    # Posterior probabilities for each data point
+    # to belong to each cluster
+    G::Union{Nothing, Matrix{T}} # (K x N) - huge!
+
     function GaussianMixture(K::Integer, N::Integer, ::Type{T}=Float64; warm_start::Bool=false) where T <: Real
         @assert K > 0
         @assert N > 0
@@ -45,7 +49,8 @@ mutable struct GaussianMixture{T} <: AbstractGaussianMixture{T}
             similar(d), similar(d), similar(d), # intermediates
             (π=similar(d), μ=similar(d), σ=similar(d)),
             (π=similar(d), μ=similar(d), σ=similar(d)),
-            zeros(T, N) # evidence
+            zeros(T, N), # evidence
+            nothing # BIG matrix
         )
     end
 end
@@ -115,6 +120,53 @@ function evidence!(
 	nothing
 end
 
+function log_likelihood(
+    x::AbstractVector{T},
+    π::AbstractVector{T}, μ::AbstractVector{T}, σ::AbstractVector{T}
+) where T <: Real
+    ev = similar(x)
+    evidence!(ev, x, π, μ, σ, 1e-10)
+
+    sum(log.(ev))
+end
+
+function vsum!(a::AbstractVector{T}, G::AbstractMatrix{T}) where T <: Real
+    K, N = size(G)
+    @tturbo for k ∈ 1:K
+        s = zero(T)
+        for n ∈ 1:N
+            s += G[k, n]
+        end
+        a[k] = s
+    end
+end
+
+function vsum_prod!(a::AbstractVector{T}, x::AbstractVector{T}, G::AbstractMatrix{T}) where T <: Real
+    K, N = size(G)
+    @tturbo for k ∈ 1:K
+        s = zero(T)
+        for n ∈ 1:N
+            s += G[k, n] * x[n]
+        end
+        a[k] = s
+    end
+end
+
+function vsum_prod!(
+    a::AbstractVector{T},
+    x1::AbstractVector{T}, x2::AbstractVector{T},
+    G::AbstractMatrix{T}
+) where T <: Real
+    K, N = size(G)
+    @tturbo for k ∈ 1:K
+        s = zero(T)
+        for n ∈ 1:N
+            s += G[k, n] * x1[n] * x2[n]
+        end
+        a[k] = s
+    end
+end
+
 """
 Intermediate computations of `a` and `b`, as in Hathaway:
 
@@ -137,22 +189,49 @@ and substituting the definition of ``μ_i^{r+1}``.
 function compute_intermediates!(
 	gm::GaussianMixture{T}, x::AbstractVector{T}, ε
 ) where T <: Real
-	evidence!(gm.evidence, x, gm.old.π, gm.old.μ, gm.old.σ, ε)
-	
-	@tturbo for k ∈ eachindex(gm.old.π)
-	    gm.a[k] = zero(T)
-		gm.b[k] = zero(T)
-		gm.tmp[k] = zero(T)
-		for n ∈ eachindex(x)
-			g = gm.old.π[k] * component_pdf(x[n], gm.old.μ[k], gm.old.σ[k]) / gm.evidence[n]
+    ev = gm.evidence
+    a = gm.a
+    b = gm.b
+    tmp = gm.tmp
+    old_π = gm.old.π
+    old_μ = gm.old.μ
+    old_σ = gm.old.σ
+
+    if gm.G === nothing
+        gm.G = Matrix{T}(undef, gm.K, gm.N)
+    end
+
+    # This fills a huge matrix, and it's still
+    # as fast as the non-allocating loop below!
+    @tturbo @. gm.G = old_π * component_pdf(x', old_μ, old_σ)
+    vsum!(ev, gm.G')
+    @tturbo gm.G ./= clamp.(ev', ε, Inf)
+
+    vsum!(a, gm.G)
+    vsum_prod!(b, x, x, gm.G)
+    vsum_prod!(tmp, x, gm.G)
+    
+    # ===== Same, but using a loop =====
+    # This, including the call to `evidence!`,
+    # calculates `old_π[k] * component_pdf(x[n], old_μ[k], old_σ[k])` TWICE,
+    # while the code with the matrix - only once
+
+    # evidence!(ev, x, old_π, old_μ, old_σ, ε)
+    
+	# @tturbo for k ∈ eachindex(old_π)
+	#     a[k] = zero(T)
+	# 	b[k] = zero(T)
+	# 	tmp[k] = zero(T)
+	# 	for n ∈ eachindex(x)
+	# 		g = old_π[k] * component_pdf(x[n], old_μ[k], old_σ[k]) / ev[n]
 			
-			gm.a[k] += g
-			gm.b[k] += x[n] * x[n] * g
-			gm.tmp[k] += x[n] * g
-		end
-	end
+	# 		a[k] += g
+	# 		b[k] += x[n] * x[n] * g
+	# 		tmp[k] += x[n] * g
+	# 	end
+	# end
 	
-	@turbo @. gm.b = clamp(gm.b - gm.tmp^2 / clamp(gm.a, ε, Inf), ε, Inf)
+	@turbo @. b = clamp(b - tmp^2 / clamp(a, ε, Inf), ε, Inf)
 	
 	nothing
 end
@@ -168,8 +247,8 @@ function em_step!(
 
     compute_intermediates!(gm, data, eps)
     
-    @turbo @. gm.new.μ = gm.tmp / gm.a
     gm.new.π .= gm.a ./ sum(gm.a)
+    @turbo @. gm.new.μ = gm.tmp / gm.a
     @turbo @. gm.new.σ = sqrt(gm.b / gm.a)
 
     nothing
@@ -177,7 +256,7 @@ end
 
 function fit!(
     gm::GaussianMixture{T}, data::AbstractVector{T};
-    init::Symbol=:fuzzy_cmeans, sort_by::Symbol=:μ,
+    init::Symbol=:kmeans, sort_by::Symbol=:μ,
     maxiter::Integer=1000, tol=1e-3, eps=1e-10
 )::GaussianMixture{T} where T
     @assert length(data) == gm.N
@@ -185,7 +264,7 @@ function fit!(
     @assert eps > 0
 
     r(x, y) = abs(x - y) / abs(y)
-    function metric()
+    function convergence_metric()
         # Don't allocate!
         @. gm.tmp = r(gm.new.π, gm.old.π)
         dπ = maximum(gm.tmp)
@@ -218,7 +297,7 @@ function fit!(
     for i ∈ 1:maxiter
         em_step!(gm, data, eps)
 
-        m = metric()
+        m = convergence_metric()
         if m < tol
             gm.converged = true
             gm.n_iter = convert(typeof(gm.n_iter), i)
@@ -235,7 +314,7 @@ function fit!(
         gm.n_iter = convert(typeof(gm.n_iter), maxiter)
     end
 
-    sort!(gm)
+    sort!(gm, by=sort_by)
 
     gm
 end
