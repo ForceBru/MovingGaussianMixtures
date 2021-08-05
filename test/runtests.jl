@@ -84,16 +84,25 @@ end
 
 @show predict(distr, sample_data[1:10])
 
-@info "Benchmarking..."
-bench_res = let
-    Random.seed!(42)
-    data = rand(distr, 1000)
-    gm = GaussianMixture(N_COMPONENTS, 1000)
+function benchmark_mixture_impl(mix_impl, data::AbstractVector, n_components)
+    @info "Benchmarking $mix_impl..."
 
+    gm = mix_impl(n_components, length(data))
     @benchmark fit!($gm, $data)
 end
+
+Random.seed!(42)
+data = rand(distr, 1000)
+bench_res = benchmark_mixture_impl(GaussianMixture, data, N_COMPONENTS)
 display(bench_res)
 println()
+
+bench_res = benchmark_mixture_impl(
+    MovingGaussianMixtures.Experimental.GaussianMixture, data, N_COMPONENTS
+)
+display(bench_res)
+println()
+
 
 # Fit moving Gaussian mixture
 mgm = MovingGaussianMixture(
