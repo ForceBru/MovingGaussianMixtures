@@ -1,8 +1,8 @@
 module Settings
 
-abstract type Initialization end
+abstract type AbstractInitialization end
 
-struct InitRandomPosteriors{T<:Real}
+struct InitRandomPosteriors{T<:Real} <: AbstractInitialization
     # Parameter of Dirichlet(a, a, a, ...)
     a::T
 
@@ -19,9 +19,9 @@ end
 
 # ===== Stopping criteria =====
 
-abstract type StoppingCriterion end
+abstract type AbstractStoppingCriterion end
 
-struct StoppingLogLikelihood{T<:Real} <: StoppingCriterion
+struct StoppingLogLikelihood{T<:Real} <: AbstractStoppingCriterion
     tol::T
 
     function StoppingLogLikelihood(tol::T) where T<:Real
@@ -30,5 +30,11 @@ struct StoppingLogLikelihood{T<:Real} <: StoppingCriterion
         new{T}(tol)
     end
 end
+
+# ===== Regularization types =====
+
+abstract type AbstractRegularization end
+
+struct NoRegularization <: AbstractRegularization end
 
 end
