@@ -9,10 +9,14 @@ function log_likelihood(gmm::GaussianMixture{T}, data::AbstractVector, ::Setting
     @tturbo for n in 1:N
         s = zero(T)
         for k in 1:K
-            s += gmm.pi[k] * normal_pdf(data[n], gmm.mu[k], gmm.sigma[k])
+            s += gmm.p[k] * normal_pdf(data[n], gmm.mu[k], gmm.sigma[k])
         end
         ret += log(s)
     end
 
     ret
 end
+
+log_likelihood(gmm::GaussianMixture, data::AbstractVector) = log_likelihood(gmm, data, Settings.NoRegularization())
+
+log_likelihood(gmm::GaussianMixture, data::AbstractVector, ::Settings.RegPosteriorSimple) = log_likelihood(gmm, data)

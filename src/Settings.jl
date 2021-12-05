@@ -37,4 +37,14 @@ abstract type AbstractRegularization end
 
 struct NoRegularization <: AbstractRegularization end
 
+struct RegPosteriorSimple{T<:Real} <: AbstractRegularization
+    eps::T
+
+    function RegPosteriorSimple(eps::T) where T <: Real
+        @assert eps >= 0
+
+        new{T}(eps)
+    end
+end
+
 end
