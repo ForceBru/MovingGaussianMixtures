@@ -3,11 +3,15 @@ uuid = "c61db976-460c-4a2e-9508-5589c15e3846"
 authors = ["ForceBru <ForceBru@users.noreply.github.com> and contributors"]
 version = "0.1.0"
 
-[extras]
-Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+[deps]
+Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+LoopVectorization = "bdcacae8-1622-11e9-2a5c-532679323890"
 
 [compat]
 julia = "1.7"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
 test = ["Test"]
