@@ -6,7 +6,7 @@ Compute E_q log[ p(X, Z | THETA) ]
 No regularization
 """
 function ELBO_1(
-    G::AM{<:Real}, p::AM{<:Real}, mu::AM{<:Real}, var::AM{<:Real}, x::AM{<:Real},
+    G::AM{<:Real}, p::AV{<:Real}, mu::AV{<:Real}, var::AV{<:Real}, x::AV{<:Real},
     ::Nothing
 )
     K, N = size(G)
@@ -22,9 +22,17 @@ function ELBO_1(
     ret
 end
 
+function ELBO_1(
+    G::AM{<:Real}, p::AV{<:Real}, mu::AV{<:Real}, var::AV{<:Real}, x::AV{<:Real},
+    ::Settings.AbstractRegPosterior
+)
+    # Posterior regularization does NOT affect ELBO
+    ELBO_1(G, p, mu, var, x, nothing)
+end
+
 regularize_posteriors!(G::AM{<:Real}, ::Nothing)::Nothing = nothing
 
-function regularize_posteriors(G::AM{<:Real}, reg::RegPosteriorSimple)::Nothing
+function regularize_posteriors!(G::AM{<:Real}, reg::Settings.RegPosteriorSimple)::Nothing
     K = size(G, 1)
     s = if iszero(reg.eps)
         0
@@ -39,14 +47,14 @@ function regularize_posteriors(G::AM{<:Real}, reg::RegPosteriorSimple)::Nothing
 end
 
 function step_E!(
-    G::AM{<:Real}, p::AM{<:Real}, mu::AM{<:Real}, var::AM{<:Real}, x::AM{<:Real},
-    reg::Union{AbstractRegPosterior, Nothing}
+    G::AM{<:Real}, p::AV{<:Real}, mu::AV{<:Real}, var::AV{<:Real}, x::AV{<:Real},
+    reg::Union{Settings.AbstractRegPosterior, Nothing}
 )::Nothing
     K, N = size(G)
-    evidence = zeros(N)
+    evidence = zeros(1, N)
     @tturbo for n in 1:N, k in 1:K
         G[k, n] = p[k] * normal_pdf(x[n], mu[k], var[k])
-        evidence[n] += G[k, n]
+        evidence[1, n] += G[k, n]
     end
     all(>(0), evidence) || throw(ZeroNormalizationException())
 
@@ -56,8 +64,8 @@ function step_E!(
 end
 
 @inline function step_E!(
-    G::AM{<:Real}, p::AM{<:Real}, mu::AM{<:Real}, var::AM{<:Real}, x::AM{<:Real},
-    reg::Union{AbstractRegPrior, Nothing}
+    G::AM{<:Real}, p::AV{<:Real}, mu::AV{<:Real}, var::AV{<:Real}, x::AV{<:Real},
+    reg::Settings.AbstractRegPrior
 )::Nothing
     # Prior regularization does NOT affect Expectation step
     step_E!(G, p, mu, var, x, nothing)
@@ -86,17 +94,17 @@ function calc_variances!(
 
     var .= 0
     @tturbo for k in 1:K, n in 1:N
-        var[k] += G[k, n] / s[k] * (x[n] - mu[k])^2
+        var[k] += G[k, n] / ev[k] * (x[n] - mu[k])^2
     end
     nothing
 end
 
 function step_M!(
-    G::AM{<:Real}, p::AM{<:Real}, mu::AM{<:Real}, var::AM{<:Real}, x::AM{<:Real},
-    reg::Union{AbstractRegPrior, Nothing}
+    G::AM{<:Real}, p::AV{<:Real}, mu::AV{<:Real}, var::AV{<:Real}, x::AV{<:Real},
+    reg::Union{Settings.AbstractRegPrior, Nothing}
 )::Nothing
     K, N = size(G)
-    evidences = sum(G, dims=1)
+    evidences = sum(G, dims=2) |> vec
     all(>(0), evidences) || throw(ZeroNormalizationException())
 
     calc_weights!(p, G, evidences, reg)
@@ -105,8 +113,8 @@ function step_M!(
 end
 
 @inline function step_M!(
-    G::AM{<:Real}, p::AM{<:Real}, mu::AM{<:Real}, var::AM{<:Real}, x::AM{<:Real},
-    reg::Union{AbstractRegPosterior, Nothing}
+    G::AM{<:Real}, p::AV{<:Real}, mu::AV{<:Real}, var::AV{<:Real}, x::AV{<:Real},
+    reg::Settings.AbstractRegPosterior
 )::Nothing
     # Posterior regularization does NOT affect maximization step
     step_M!(G, p, mu, var, x, nothing)

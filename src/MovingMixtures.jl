@@ -1,6 +1,6 @@
 module MovingMixtures
 
-export GaussianMixture, Moving, fit!, fit_moving!, Settings
+export GaussianMixture, fit!, distribution, Settings
 
 using DocStringExtensions
 using LoopVectorization
@@ -11,7 +11,6 @@ const AM = AbstractMatrix{T} where T
 
 include("Exceptions.jl")
 include("Settings.jl")
-using .Settings
 
 include("EM.jl")
 include("GaussianMixture.jl")
