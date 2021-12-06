@@ -1,10 +1,11 @@
 name = "MovingMixtures"
 uuid = "c61db976-460c-4a2e-9508-5589c15e3846"
 authors = ["ForceBru <ForceBru@users.noreply.github.com> and contributors"]
-version = "0.1.1"
+version = "0.1.2"
 
 [deps]
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+DocStringExtensions = "ffbed154-4ef7-542d-bbb7-c09d3a79fcae"
 LoopVectorization = "bdcacae8-1622-11e9-2a5c-532679323890"
 
 [compat]

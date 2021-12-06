@@ -1,86 +1,113 @@
-# ===== Expactation step =====
-function _calc_unnorm_posteriors!(
-    G::AM{<:Real}, p::AV{<:Real}, mu::AV{<:Real}, sigma::AV{<:Real}, data::AV{<:Real}
-)::Nothing
-    K, N = size(G)
+@inline normal_pdf(x::Real, mu::Real, var::Real) = exp(-(x - mu)^2 / (2var)) / sqrt(2pi * var)
 
-    @tturbo for n in 1:N, k in 1:K
-        G[k, n] = p[k] * normal_pdf(data[n], mu[k], sigma[k])
+"""
+Compute E_q log[ p(X, Z | THETA) ]
+
+No regularization
+"""
+function ELBO_1(
+    G::AM{<:Real}, p::AM{<:Real}, mu::AM{<:Real}, var::AM{<:Real}, x::AM{<:Real},
+    ::Nothing
+)
+    K, N = size(G)
+    ln2pi = log(2pi)
+    ret = 0.0
+
+    @tturbo for k in 1:K, n in 1:N
+        ret += G[k, n] * (
+            log(p[k]) - (ln2pi + log(var[k]) + (x[n] - mu[k])^2 / var[k]) / 2
+        )
     end
 
-    nothing
+    ret
 end
 
-function step_E!(
-    G::AM{<:Real}, p::AV{<:Real}, mu::AV{<:Real}, sigma::AV{<:Real}, data::AV{<:Real},
-    ::Settings.NoRegularization
-)::Nothing
-    _calc_unnorm_posteriors!(G, p, mu, sigma, data)
+regularize_posteriors!(G::AM{<:Real}, ::Nothing)::Nothing = nothing
 
-    # Normalize posteriors
-    G ./= sum(G, dims=1)
-
-    nothing
-end
-
-function step_E!(
-    G::AM{<:Real}, p::AV{<:Real}, mu::AV{<:Real}, sigma::AV{<:Real}, data::AV{<:Real},
-    reg::Settings.RegPosteriorSimple
-)::Nothing
+function regularize_posteriors(G:AM{<:Real}, reg::RegPosteriorSimple)::Nothing
     K = size(G, 1)
-    step_E!(G, p, mu, sigma, data)
+    s = if iszero(reg.eps)
+        0
+    else
+        1/reg.eps > 1/K || throw(InvalidMinPosteriorProbException(reg.eps, K))
+        1 / (1/reg.eps - 1/K)
+    end
 
-    s = isnan(1/reg.eps) ? 0 : (1 / (1/reg.eps - K))
-    @. G = (G + s) / (1 + K * s)
+    @. G = (G + s) / (1 + s*K)
 
     nothing
 end
 
 function step_E!(
-    G::AM{<:Real}, p::AV{<:Real}, mu::AV{<:Real}, sigma::AV{<:Real}, data::AV{<:Real}
-)::Nothing
-    step_E!(G, p, mu, sigma, data, Settings.NoRegularization())
-end
-
-# ===== Maximization step =====
-function step_M!(
-    G::AM{<:Real}, p::AV{<:Real}, mu::AV{<:Real}, sigma::AV{<:Real}, data::AV{<:Real},
-    ::Settings.NoRegularization
+    G::AM{<:Real}, p::AM{<:Real}, mu::AM{<:Real}, var::AM{<:Real}, x::AM{<:Real},
+    reg::Union{AbstractRegPosterior, Nothing}
 )::Nothing
     K, N = size(G)
-    s = sum(G, dims=2)
-    @assert all(>(0), s)
+    evidence = zeros(N)
+    @tturbo for n in 1:N, k in 1:K
+        G[k, n] = p[k] * normal_pdf(x[n], mu[k], var[k])
+        evidence[n] += G[k, n]
+    end
+    all(>(0), evidence) || throw(ZeroNormalizationException())
 
-    # Weights
-    p .= s ./ sum(s)
+    G ./= evidence
 
-    # Means
+    regularize_posteriors!(G, reg)
+end
+
+@inline function step_E!(
+    G::AM{<:Real}, p::AM{<:Real}, mu::AM{<:Real}, var::AM{<:Real}, x::AM{<:Real},
+    reg::Union{AbstractRegPrior, Nothing}
+)::Nothing
+    # Prior regularization does NOT affect Expectation step
+    step_E!(G, p, mu, var, x, nothing)
+end
+
+function calc_weights!(p::AV{<:Real}, G::AM{<:Real}, ev::AV{<:Real}, ::Nothing)::Nothing
+    p .= ev ./ sum(ev)
+    nothing
+end
+
+function calc_means!(mu::AV{<:Real}, G::AM{<:Real}, ev::AV{<:Real}, x::AV{<:Real}, ::Nothing)::Nothing
+    K, N = size(G)
+
     mu .= 0
     @tturbo for k in 1:K, n in 1:N
-        mu[k] += G[k, n] / s[k] * data[n]
+        mu[k] += G[k, n] / ev[k] * x[n]
     end
-
-    # Standard deviations
-    sigma .= 0
-    @tturbo for k in 1:K, n in 1:N
-        sigma[k] += G[k, n] / s[k] * (data[n] - mu[k])^2
-    end
-    sigma .= sqrt.(sigma)
-
     nothing
 end
 
-
-function step_M!(
-    G::AM{<:Real}, p::AV{<:Real}, mu::AV{<:Real}, sigma::AV{<:Real}, data::AV{<:Real}
+function calc_variances!(
+    var::AV{<:Real}, G::AM{<:Real}, ev::AV{<:Real}, x::AV{<:Real}, mu::AV{<:Real},
+    ::Nothing
 )::Nothing
-    step_M!(G, p, mu, sigma, data, Settings.NoRegularization())
+    K, N = size(G)
+
+    var .= 0
+    @tturbo for k in 1:K, n in 1:N
+        var[k] += G[k, n] / s[k] * (x[n] - mu[k])^2
+    end
+    nothing
 end
 
 function step_M!(
-    G::AM{<:Real}, p::AV{<:Real}, mu::AV{<:Real}, sigma::AV{<:Real}, data::AV{<:Real},
-    ::Settings.RegPosteriorSimple
+    G::AM{<:Real}, p::AM{<:Real}, mu::AM{<:Real}, var::AM{<:Real}, x::AM{<:Real},
+    reg::Union{AbstractRegPrior, Nothing}
 )::Nothing
-    # Posterior regularization doesn't affect M step
-    step_M!(G, p, mu, sigma, data)
+    K, N = size(G)
+    evidences = sum(G, dims=1)
+    all(>(0), evidences) || throw(ZeroNormalizationException())
+
+    calc_weights!(p, G, evidences, reg)
+    calc_means!(mu, G, evidences, x, reg)
+    calc_variances!(var, G, evidences, x, mu, reg)
+end
+
+@inline function step_M!(
+    G::AM{<:Real}, p::AM{<:Real}, mu::AM{<:Real}, var::AM{<:Real}, x::AM{<:Real},
+    reg::Union{AbstractRegPosterior, Nothing}
+)::Nothing
+    # Posterior regularization does NOT affect maximization step
+    step_M!(G, p, mu, var, x, nothing)
 end

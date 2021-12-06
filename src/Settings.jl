@@ -1,46 +1,45 @@
 module Settings
 
-abstract type AbstractInitialization end
+abstract type AbstractInitStrategy end
 
-struct InitRandomPosteriors{T<:Real} <: AbstractInitialization
-    # Parameter of Dirichlet(a, a, a, ...)
+"""
+    InitRandomPosterior(a::T) where T<:Real
+
+Initialize posteriors from Dirichlet(a)
+"""
+struct InitRandomPosterior{T<:Real} <: AbstractInitStrategy
     a::T
 
-    function InitRandomPosteriors(a::T) where T<:Real
+    function InitRandomPosterior(a::T) where T<:Real
         @assert a > 0
 
         new{T}(a)
     end
 end
 
-struct KeepPosteriors <: AbstractInitialization end
 
-struct KeepParameters <: AbstractInitialization end
+abstract type AbstractStopping end
 
-# ===== Stopping criteria =====
-
-abstract type AbstractStoppingCriterion end
-
-struct StoppingLogLikelihood{T<:Real} <: AbstractStoppingCriterion
+struct StoppingELBO{T<:Real}
     tol::T
 
-    function StoppingLogLikelihood(tol::T) where T<:Real
+    function StoppingELBO(tol::T) where T<:Real
         @assert tol > 0
 
         new{T}(tol)
     end
 end
 
-# ===== Regularization types =====
-
 abstract type AbstractRegularization end
+abstract type AbstractRegPosterior <: AbstractRegularization end
+abstract type AbstractRegPrior <: AbstractRegularization end
 
-struct NoRegularization <: AbstractRegularization end
+const MaybeRegularization = Union{AbstractRegularization, Nothing}
 
-struct RegPosteriorSimple{T<:Real} <: AbstractRegularization
+struct RegPosteriorSimple{T<:Real} <: AbstractRegPosterior
     eps::T
 
-    function RegPosteriorSimple(eps::T) where T <: Real
+    function RegPosteriorSimple(eps::T) where T<:Real
         @assert eps >= 0
 
         new{T}(eps)
