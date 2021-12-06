@@ -1,18 +1,15 @@
 module Settings
 
-export AbstractInitStrategy, AbstractStopping
-export AbstractRegularization, AbstractRegPosterior, AbstractRegPrior, MaybeRegularization
-
-export InitRandomPosterior, StoppingELBO, RegPosteriorSimple
-
+using DocStringExtensions
 abstract type AbstractInitStrategy end
 
 """
-    InitRandomPosterior(a::T) where T<:Real
+$(TYPEDEF)
 
-Initialize posteriors from Dirichlet(a)
+Initialize posteriors randomly from Dirichlet(a)
 """
 struct InitRandomPosterior{T<:Real} <: AbstractInitStrategy
+    "Parameter of the Dirichlet distribution"
     a::T
 
     function InitRandomPosterior(a::T) where T<:Real
@@ -22,10 +19,20 @@ struct InitRandomPosterior{T<:Real} <: AbstractInitStrategy
     end
 end
 
+struct InitKeepPosterior <: AbstractInitStrategy end
+
 
 abstract type AbstractStopping end
 
-struct StoppingELBO{T<:Real}
+"""
+$(TYPEDEF)
+$(TYPEDFIELDS)
+
+Consider EM converged when the absolute difference in ELBO
+becomes less than `tol`
+"""
+struct StoppingELBO{T<:Real} <: AbstractStopping
+    "Minimum required change in ELBO"
     tol::T
 
     function StoppingELBO(tol::T) where T<:Real
@@ -41,7 +48,13 @@ abstract type AbstractRegPrior <: AbstractRegularization end
 
 const MaybeRegularization = Union{AbstractRegularization, Nothing}
 
+"""
+$(TYPEDEF)
+
+Regularize posterior q(z) such that `q(z) >= eps` for any `z`.
+"""
 struct RegPosteriorSimple{T<:Real} <: AbstractRegPosterior
+    "Minimum probability in the posterior distribution q(z)"
     eps::T
 
     function RegPosteriorSimple(eps::T) where T<:Real
