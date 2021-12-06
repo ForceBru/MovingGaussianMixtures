@@ -1,6 +1,6 @@
 module MovingMixtures
 
-export GaussianMixture, fit!, Settings
+export GaussianMixture, Moving, fit!, fit_moving!, Settings
 
 using LoopVectorization
 using Distributions

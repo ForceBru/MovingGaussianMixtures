@@ -56,7 +56,6 @@ function init!(gmm::GaussianMixture)::Nothing
     gmm.n_iter = 0
     gmm.converged = true
     gmm.convergence_status = C_RUNNING
-    gmm.p .= gmm.mu .= gmm.sigma .= 0
 
     nothing
 end
@@ -67,13 +66,40 @@ function init!(
     init_type::Settings.InitRandomPosteriors,
     regularization::Settings.AbstractRegularization
 )::Nothing where T<:AbstractFloat
-    N = size(gmm.G, 2)
     init!(gmm)
+    gmm.p .= gmm.mu .= gmm.sigma .= 0
 
-    gmm.G .= rand(Dirichlet(gmm.K, init_type.a), N)
+    gmm.G .= rand(Dirichlet(gmm.K, init_type.a), size(gmm.G, 2))
     @assert !any(isnan, gmm.G)
 
     step_M!(gmm, data, regularization)
+end
+
+function init!(
+    gmm::GaussianMixture{T},
+    data::AV{<:Real},
+    init_type::Settings.KeepPosteriors,
+    regularization::Settings.AbstractRegularization
+)::Nothing where T<:AbstractFloat
+    init!(gmm)
+
+    @assert !any(isnan, gmm.G)
+
+    step_M!(gmm, data, regularization)
+end
+
+function init!(
+    gmm::GaussianMixture{T},
+    data::AV{<:Real},
+    init_type::Settings.KeepParameters,
+    regularization::Settings.AbstractRegularization
+)::Nothing where T<:AbstractFloat
+    N = size(gmm.G, 2)
+    init!(gmm)
+
+    step_E!(gmm, data, regularization)
+
+    @assert !any(isnan, gmm.G)
 end
 
 function should_stop(gmm::GaussianMixture, stopping::Settings.StoppingLogLikelihood)::Bool
@@ -100,7 +126,6 @@ function fit!(
     end
 
     init!(gmm, data, init_type, regularization)
-    @show gmm.p gmm.mu gmm.sigma
     push!(gmm.loglikelihood_history, log_likelihood(gmm, data, regularization))
 
     while gmm.n_iter < min_iter || !should_stop(gmm, stopping)
@@ -122,4 +147,58 @@ function fit!(
     end
 
     gmm
+end
+
+mutable struct Moving{G<:GaussianMixture, T<:AbstractFloat}
+    gmm::G
+    P::Matrix{T}
+    M::Matrix{T}
+    S::Matrix{T}
+
+    function Moving(gmm::GaussianMixture{T}) where T<:AbstractFloat
+        new{GaussianMixture, T}(
+            gmm,
+            zeros(gmm.K, 1), zeros(gmm.K, 1), zeros(gmm.K, 1),
+        )
+    end
+end
+
+function fit!(
+    mov::Moving{G, T}, stream::AbstractVector{<:Real}, win_size::Integer;
+    first_init::Settings.InitRandomPosteriors=Settings.InitRandomPosteriors(200),
+    init_type::Settings.AbstractInitialization=Settings.InitRandomPosteriors(200),
+    random_posterior::Settings.InitRandomPosteriors=Settings.InitRandomPosteriors(200),
+    kwargs...
+) where {G<:GaussianMixture, T<:AbstractFloat}
+    @assert win_size > 1
+    println("WHAT")
+
+    distr = Dirichlet(mov.gmm.K, random_posterior.a)
+    the_range = win_size:length(stream)
+
+    mov.P = Matrix{T}(undef, mov.gmm.K, the_range[end])
+    mov.M = similar(mov.P)
+    mov.S = similar(mov.P)
+    mov.P .= mov.M .= mov.S .= NaN
+
+    window = @view stream[1:the_range[1]]
+    fit!(mov.gmm, window; init_type=first_init, kwargs...)
+
+    for off in the_range
+        window = @view stream[off-the_range[1]+1 : off]
+
+        fit!(mov.gmm, window; init_type, kwargs...)
+        mov.P[:, off] .= mov.gmm.p
+        mov.M[:, off] .= mov.gmm.mu
+        mov.S[:, off] .= mov.gmm.sigma
+
+        @show mov.gmm.sigma
+
+        if init_type isa Settings.KeepPosteriors
+            mov.gmm.G[:, 1:end-1] .= mov.gmm.G[:, 2:end]
+            mov.gmm.G[:, end] .= rand(distr)
+        end
+    end
+
+    mov
 end

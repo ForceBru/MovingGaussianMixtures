@@ -4,7 +4,7 @@ function _calc_unnorm_posteriors!(
 )::Nothing
     K, N = size(G)
 
-    for n in 1:N, k in 1:K
+    @tturbo for n in 1:N, k in 1:K
         G[k, n] = p[k] * normal_pdf(data[n], mu[k], sigma[k])
     end
 
@@ -56,17 +56,16 @@ function step_M!(
 
     # Means
     mu .= 0
-    for k in 1:K, n in 1:N
-        mu[k] += G[k, n] * data[n]
+    @tturbo for k in 1:K, n in 1:N
+        mu[k] += G[k, n] / s[k] * data[n]
     end
-    mu ./= s
 
     # Standard deviations
     sigma .= 0
-    for k in 1:K, n in 1:N
-        sigma[k] += G[k, n] * (data[n] - mu[k])^2
+    @tturbo for k in 1:K, n in 1:N
+        sigma[k] += G[k, n] / s[k] * (data[n] - mu[k])^2
     end
-    sigma .= sqrt.(sigma ./ s)
+    sigma .= sqrt.(sigma)
 
     nothing
 end

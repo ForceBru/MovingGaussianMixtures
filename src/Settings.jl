@@ -13,9 +13,9 @@ struct InitRandomPosteriors{T<:Real} <: AbstractInitialization
     end
 end
 
-struct InitGivenPosteriors{T<:Real}
-    G::AbstractMatrix{T}
-end
+struct KeepPosteriors <: AbstractInitialization end
+
+struct KeepParameters <: AbstractInitialization end
 
 # ===== Stopping criteria =====
 
