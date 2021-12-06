@@ -1,5 +1,10 @@
 module Settings
 
+export AbstractInitStrategy, AbstractStopping
+export AbstractRegularization, AbstractRegPosterior, AbstractRegPrior, MaybeRegularization
+
+export InitRandomPosterior, StoppingELBO, RegPosteriorSimple
+
 abstract type AbstractInitStrategy end
 
 """

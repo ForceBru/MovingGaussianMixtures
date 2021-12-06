@@ -24,7 +24,7 @@ end
 
 regularize_posteriors!(G::AM{<:Real}, ::Nothing)::Nothing = nothing
 
-function regularize_posteriors(G:AM{<:Real}, reg::RegPosteriorSimple)::Nothing
+function regularize_posteriors(G::AM{<:Real}, reg::RegPosteriorSimple)::Nothing
     K = size(G, 1)
     s = if iszero(reg.eps)
         0

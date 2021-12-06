@@ -11,7 +11,7 @@ mutable struct GaussianMixture{T<:AbstractFloat}
     n_iter::UInt
     history_ELBO::Vector{T}
 
-    function GaussianMixture(n_components::Integer, T::{<:AbstractFloat})
+    function GaussianMixture(n_components::Integer, T::Type{<:AbstractFloat})
         (n_components > 0) || throw(ArgumentError(
             "Number of components must be positive, got $n_components"
         ))
