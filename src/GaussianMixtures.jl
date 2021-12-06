@@ -67,15 +67,10 @@ function init!(
     init_type::Settings.InitRandomPosteriors,
     regularization::Settings.AbstractRegularization
 )::Nothing where T<:AbstractFloat
+    N = size(gmm.G, 2)
     init!(gmm)
 
-    g = rand(Dirichlet(gmm.K, init_type.a))
-    @show g
-
-    @inbounds for n in 1:size(gmm.G, 2)
-        gmm.G[:, n] .= g
-    end
-
+    gmm.G .= rand(Dirichlet(gmm.K, init_type.a), N)
     @assert !any(isnan, gmm.G)
 
     step_M!(gmm, data, regularization)
@@ -89,7 +84,7 @@ end
 
 function fit!(
     gmm::GaussianMixture{T}, data::AbstractVector{<:Real};
-    init_type::Settings.AbstractInitialization=Settings.InitRandomPosteriors(100),
+    init_type::Settings.AbstractInitialization=Settings.InitRandomPosteriors(200),
     stopping::Settings.AbstractStoppingCriterion=Settings.StoppingLogLikelihood(1e-10),
     regularization::Settings.AbstractRegularization=Settings.NoRegularization(),
     min_iter::Integer=100
