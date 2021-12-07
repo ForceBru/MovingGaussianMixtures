@@ -4,7 +4,7 @@ $(TYPEDEF)
 Gaussian mixture model (finite mixture of normal distributions)
 with `K` components and probability density function:
 ```math
-p(x) = sum_{k=1}^K p[k] * N(x; mu[k], var[k])
+p(x) = \\sum_{k=1}^K p[k] * N(x; mu[k], var[k])
 ```
 
 Here `N(x; mu[k], var[k])` is a normal distribution
@@ -12,7 +12,7 @@ with location `mu[k]` and scale `sqrt(var[k])`.
 
 $(TYPEDFIELDS)
 """
-mutable struct GaussianMixture{T<:AbstractFloat}
+mutable struct GaussianMixture{T<:Real}
     "Number of components"
     K::Integer
     "Length of data used to fit the model"
@@ -35,10 +35,10 @@ mutable struct GaussianMixture{T<:AbstractFloat}
 
     "Number of EM iterations"
     n_iter::UInt
-    "Values of `ELBO - posterior entropy` for each EM iteration"
+    "Values of `(ELBO - posterior entropy)` for each EM iteration"
     history_ELBO::Vector{T}
 
-    function GaussianMixture(n_components::Integer, T::Type{<:AbstractFloat}=Float64)
+    function GaussianMixture(n_components::Integer, T::Type{<:Real}=Float64)
         (n_components > 0) || throw(ArgumentError(
             "Number of components must be positive, got $n_components"
         ))
@@ -87,8 +87,10 @@ ELBO_1(gmm::GM, data::AV{<:Real}, reg::Settings.MaybeRegularization) =
 """
 $(TYPEDSIGNATURES)
 
-Initialize Gaussian mixture using given initialization `strategy`
-and maybe regularization `reg`
+Initialize Gaussian mixture from random posterior:
+1. For each observation `x_n` the posterior `q(z_n)`
+is sampled from `Dirichlet(strategy.a)`
+2. The mixture parameters are computed by the usual M-step
 """
 function initialize!(
     gmm::GM, data::AV{<:Real},
@@ -101,6 +103,13 @@ function initialize!(
     nothing
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Initialize Gaussian mixture from the current posterior:
+1. The posteriors `q(z_n)` are left unchanged
+2. The mixture parameters are computed by the usual M-step
+"""
 function initialize!(
     gmm::GM, data::AV{<:Real},
     strategy::Settings.InitKeepPosterior, reg::Settings.MaybeRegularization
@@ -108,6 +117,25 @@ function initialize!(
     step_M!(gmm, data, reg)
 
     !has_zeros(gmm.var) || throw(ZeroVarianceException(gmm.var))
+
+    nothing
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Initialize Gaussian mixture from current parameter estimates:
+1. The parameters are left unchanged
+2. For each observation `x_n` the posterior `q(z_n)`
+is computed by the usual E-step
+"""
+function initialize!(
+    gmm::GM, data::AV{<:Real},
+    strategy::Settings.InitKeepParameters, reg::Settings.MaybeRegularization
+)::Nothing
+    !has_zeros(gmm.var) || throw(ZeroVarianceException(gmm.var))
+
+    step_E!(gmm, data, reg)
 
     nothing
 end
@@ -134,7 +162,7 @@ function fit!(
     init_strategy::Settings.AbstractInitStrategy=Settings.InitRandomPosterior(200),
     stopping_criterion::Settings.AbstractStopping=Settings.StoppingELBO(1e-10, 20),
     regularization::Settings.MaybeRegularization=nothing
-) where T<:AbstractFloat
+) where T<:Real
     if gmm.N != length(data)
         gmm.N = length(data)
         gmm.G = zeros(T, gmm.K, gmm.N)

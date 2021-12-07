@@ -1,12 +1,28 @@
+"""
+Settings to control fitting of Gaussian mixture models.
+
+- Initialization is controlled by derivatives of `Settings.AbstractInitStrategy`,
+types whose names look like `Settings.Init[something]`.
+- Stopping criteria are controlled by `Settings.AbstractStopping`
+- Regularization (to prevent zero variance, for example) is set up by `Settings.AbstractRegularization`.
+
+Details are available in documentation of each type.
+"""
 module Settings
 
 using DocStringExtensions
+
+"""
+$(TYPEDEF)
+
+Controls the initialization strategy of the EM algorithm.
+"""
 abstract type AbstractInitStrategy end
 
 """
 $(TYPEDEF)
 
-Initialize posteriors randomly from Dirichlet(a)
+Initialize posteriors randomly from `Dirichlet(a)`
 """
 struct InitRandomPosterior{T<:Real} <: AbstractInitStrategy
     "Parameter of the Dirichlet distribution"
@@ -19,9 +35,27 @@ struct InitRandomPosterior{T<:Real} <: AbstractInitStrategy
     end
 end
 
+"""
+$(TYPEDEF)
+
+Keep the posteriors unchanged.
+Initialize parameter estimates using these posteriors in the usual M-step.
+"""
 struct InitKeepPosterior <: AbstractInitStrategy end
 
+"""
+$(TYPEDEF)
 
+Keep the parameter estimates unchanged.
+Initialize posteriors using these parameter estimates in the usual E-step.
+"""
+struct InitKeepParameters <: AbstractInitStrategy end
+
+"""
+$(TYPEDEF)
+
+Controls the ctopping criterion of the EM algorithm.
+"""
 abstract type AbstractStopping end
 
 """
@@ -45,6 +79,13 @@ struct StoppingELBO{T<:Real} <: AbstractStopping
     end
 end
 
+"""
+$(TYPEDEF)
+
+Controls the regularization of the EM algorithm.
+Regularization is needed mainly to prevent the algorithm
+from zeroing-out components' variances.
+"""
 abstract type AbstractRegularization end
 abstract type AbstractRegPosterior <: AbstractRegularization end
 abstract type AbstractRegPrior <: AbstractRegularization end
@@ -54,6 +95,14 @@ const MaybeRegularization = Union{AbstractRegularization, Nothing}
 """
 $(TYPEDEF)
 Regularize posterior q(z) such that `q(z) >= eps` for any `z`.
+This simple version does this by using this as `q(z)`:
+
+```math
+q(z) = [p(z|x, \\theta) + s] / [1 + s * K]
+```
+
+Here `s` is a number computed from `eps`
+and `K` is the number of mixture components.
 
 $(TYPEDFIELDS)
 """
@@ -71,7 +120,11 @@ end
 """
 $(TYPEDEF)
 Keep components' variances away from zero
-by adding a small positive number to them.
+by adding a small positive number to them:
+
+```math
+var[k] = var[k] + \\epsilon
+```
 
 $(TYPEDFIELDS)
 """

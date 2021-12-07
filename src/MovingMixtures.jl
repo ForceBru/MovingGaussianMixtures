@@ -1,6 +1,6 @@
 module MovingMixtures
 
-export GaussianMixture, fit!, distribution, Settings
+export GaussianMixture, Moving, fit!, distribution, Settings
 
 using DocStringExtensions
 using LoopVectorization

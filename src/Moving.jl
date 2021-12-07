@@ -1,9 +1,29 @@
+"""
+$(TYPEDEF)
+
+Gaussian mixture models fit on a moving window.
+Used for time-series analysis.
+
+$(TYPEDFIELDS)
+"""
 mutable struct Moving{T<:Real, G<:GaussianMixture{T}}
     "Mixture model instance"
     mix::G
 
+    """
+    Components' weights.
+    `n`th _column_ containts estimates for the `n`th moving window
+    """
     P::Matrix{T}
+    """
+    Components' means.
+    `n`th _column_ containts estimates for the `n`th moving window
+    """
     M::Matrix{T}
+    """
+    Components' variances.
+    `n`th _column_ containts estimates for the `n`th moving window
+    """
     V::Matrix{T}
 end
 
@@ -12,9 +32,15 @@ function Moving(gmm::GaussianMixture{T}) where T<:Real
     M = copy(P)
     V = copy(P)
 
-    new{T, typeof(gmm)}(gmm, P, M, V)
+    Moving(gmm, P, M, V)
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Fit Gaussian mixture model on moving windows of width `win_size`
+across given data `stream`. `kwargs` are passed to `fit!(::GaussianMixture, ...)`
+"""
 function fit!(
     mov::Moving{T}, stream::AV{<:Real}, win_size::Integer;
     first_init::Settings.AbstractInitStrategy=Settings.InitRandomPosterior(200),
@@ -40,6 +66,11 @@ function fit!(
         window = @view stream[off - the_range[1] + 1 : off]
 
         fit!(mov.mix, window; init_strategy, kwargs...)
+
+        if init_strategy isa Settings.InitKeepPosterior
+            mov.mix.G[:, 1:end-1] .= mov.mix.G[:, 2:end]
+            mov.mix.G[:, end] .= 1/mov.mix.K
+        end
 
         mov.P[:, off] .= mov.mix.p
         mov.M[:, off] .= mov.mix.mu
