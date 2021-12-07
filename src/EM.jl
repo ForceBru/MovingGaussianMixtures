@@ -24,13 +24,13 @@ end
 
 function ELBO_1(
     G::AM{<:Real}, p::AV{<:Real}, mu::AV{<:Real}, var::AV{<:Real}, x::AV{<:Real},
-    ::Settings.AbstractRegPosterior
+    ::Union{Settings.AbstractRegPosterior, Settings.RegVarianceSimple}
 )
     # Posterior regularization does NOT affect ELBO
     ELBO_1(G, p, mu, var, x, nothing)
 end
 
-regularize_posteriors!(G::AM{<:Real}, ::Nothing)::Nothing = nothing
+@inline regularize_posteriors!(G::AM{<:Real}, ::Nothing)::Nothing = nothing
 
 function regularize_posteriors!(G::AM{<:Real}, reg::Settings.RegPosteriorSimple)::Nothing
     K = size(G, 1)
@@ -51,14 +51,14 @@ function step_E!(
     reg::Union{Settings.AbstractRegPosterior, Nothing}
 )::Nothing
     K, N = size(G)
-    evidence = zeros(1, N)
+    normalization = zeros(1, N)
     @tturbo for n in 1:N, k in 1:K
         G[k, n] = p[k] * normal_pdf(x[n], mu[k], var[k])
-        evidence[1, n] += G[k, n]
+        normalization[1, n] += G[k, n]
     end
-    all(>(0), evidence) || throw(ZeroNormalizationException())
+    all(>(0), normalization) || throw(ZeroNormalizationException())
 
-    G ./= evidence
+    G ./= normalization
 
     regularize_posteriors!(G, reg)
 end
@@ -76,6 +76,9 @@ function calc_weights!(p::AV{<:Real}, G::AM{<:Real}, ev::AV{<:Real}, ::Nothing):
     nothing
 end
 
+@inline calc_weights!(p::AV{<:Real}, G::AM{<:Real}, ev::AV{<:Real}, ::Settings.AbstractRegPrior) =
+    calc_weights!(p, G, ev, nothing)
+
 function calc_means!(mu::AV{<:Real}, G::AM{<:Real}, ev::AV{<:Real}, x::AV{<:Real}, ::Nothing)::Nothing
     K, N = size(G)
 
@@ -85,6 +88,9 @@ function calc_means!(mu::AV{<:Real}, G::AM{<:Real}, ev::AV{<:Real}, x::AV{<:Real
     end
     nothing
 end
+
+@inline calc_means!(mu::AV{<:Real}, G::AM{<:Real}, ev::AV{<:Real}, x::AV{<:Real}, ::Settings.AbstractRegPrior) =
+    calc_means!(mu, G, ev, x, nothing)
 
 function calc_variances!(
     var::AV{<:Real}, G::AM{<:Real}, ev::AV{<:Real}, x::AV{<:Real}, mu::AV{<:Real},
@@ -98,6 +104,21 @@ function calc_variances!(
     end
     nothing
 end
+
+function calc_variances!(
+    var::AV{<:Real}, G::AM{<:Real}, ev::AV{<:Real}, x::AV{<:Real}, mu::AV{<:Real},
+    reg::Settings.RegVarianceSimple
+)::Nothing
+    calc_variances!(var, G, ev, x, mu, nothing)
+    var .+= reg.eps
+
+    nothing
+end
+
+@inline calc_variances!(
+    var::AV{<:Real}, G::AM{<:Real}, ev::AV{<:Real}, x::AV{<:Real}, mu::AV{<:Real},
+    ::Settings.AbstractRegPrior
+) = calc_variances!(var, G, ev, x, mu, nothing)
 
 function step_M!(
     G::AM{<:Real}, p::AV{<:Real}, mu::AV{<:Real}, var::AV{<:Real}, x::AV{<:Real},

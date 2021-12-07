@@ -1,16 +1,16 @@
 """
 $(TYPEDEF)
-$(TYPEDFIELDS)
 
-Gaussian mixture model (finite mixture of normal distributions).
-
-Probability density function:
+Gaussian mixture model (finite mixture of normal distributions)
+with `K` components and probability density function:
 ```math
 p(x) = sum_{k=1}^K p[k] * N(x; mu[k], var[k])
 ```
 
 Here `N(x; mu[k], var[k])` is a normal distribution
 with location `mu[k]` and scale `sqrt(var[k])`.
+
+$(TYPEDFIELDS)
 """
 mutable struct GaussianMixture{T<:AbstractFloat}
     "Number of components"
@@ -27,7 +27,7 @@ mutable struct GaussianMixture{T<:AbstractFloat}
 
     """
     Matrix of posterior distributions `q(z)` of latent variables `Z`.
-    Each _column_ is a probability distribition of `Z`
+    Each _column_ is a probability distribution of `Z`
     that corresponds to an element of the training data.
     For example, `G[:, 1]` is the distribution of `z[1]`, which corresponds to `training_data[1]`.
     """
@@ -35,7 +35,7 @@ mutable struct GaussianMixture{T<:AbstractFloat}
 
     "Number of EM iterations"
     n_iter::UInt
-    "Values of (ELBO - posterior entropy) for each EM iteration"
+    "Values of `ELBO - posterior entropy` for each EM iteration"
     history_ELBO::Vector{T}
 
     function GaussianMixture(n_components::Integer, T::Type{<:AbstractFloat}=Float64)
@@ -74,7 +74,7 @@ distribution(gmm::GM) = UnivariateGMM(
     gmm.mu, sqrt.(gmm.var), Categorical(gmm.p)
 )
 
-has_zeros(x::AV{<:Real})::Bool = any(≈(0), x)
+has_zeros(x::AV{<:Real})::Bool = any(s->isnan(1/s), x)
 
 step_M!(gmm::GM, data::AV{<:Real}, reg::Settings.MaybeRegularization) =
     step_M!(gmm.G, gmm.p, gmm.mu, gmm.var, data, reg)
@@ -87,8 +87,7 @@ ELBO_1(gmm::GM, data::AV{<:Real}, reg::Settings.MaybeRegularization) =
 """
 $(TYPEDSIGNATURES)
 
-Initialize Gaussian mixture using
-given initialization `strategy`
+Initialize Gaussian mixture using given initialization `strategy`
 and maybe regularization `reg`
 """
 function initialize!(
@@ -113,11 +112,16 @@ function initialize!(
     nothing
 end
 
-# ===== Stopping =====
+# ===== Fitting =====
 function should_stop(gmm::GM, criterion::Settings.StoppingELBO)::Bool
-    (length(gmm.history_ELBO) < 2) && return false
+    (length(gmm.history_ELBO) < criterion.n_iter + 2) && return false
 
-    abs(gmm.history_ELBO[end] - gmm.history_ELBO[end-1]) < criterion.tol
+    metric = abs.(
+        gmm.history_ELBO[end-criterion.n_iter:end]
+        .- gmm.history_ELBO[end-criterion.n_iter-1:end-1]
+    ) |> maximum
+
+    metric < criterion.tol
 end
 
 """
@@ -128,7 +132,7 @@ Fit Gaussian mixture model `gmm` to `data`.
 function fit!(
     gmm::GM{T}, data::AV{<:Real};
     init_strategy::Settings.AbstractInitStrategy=Settings.InitRandomPosterior(200),
-    stopping_criterion::Settings.AbstractStopping=Settings.StoppingELBO(1e-10),
+    stopping_criterion::Settings.AbstractStopping=Settings.StoppingELBO(1e-10, 20),
     regularization::Settings.MaybeRegularization=nothing
 ) where T<:AbstractFloat
     if gmm.N != length(data)
