@@ -14,5 +14,6 @@ include("Settings.jl")
 
 include("EM.jl")
 include("GaussianMixture.jl")
+include("Moving.jl")
 
 end
