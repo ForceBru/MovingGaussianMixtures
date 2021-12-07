@@ -22,7 +22,7 @@ function ELBO_1(
     ret
 end
 
-function ELBO_1(
+@inline function ELBO_1(
     G::AM{<:Real}, p::AV{<:Real}, mu::AV{<:Real}, var::AV{<:Real}, x::AV{<:Real},
     ::Union{Settings.AbstractRegPosterior, Settings.RegVarianceSimple}
 )
