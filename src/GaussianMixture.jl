@@ -164,7 +164,7 @@ function fit!(
     gmm::GM{T}, data::AV{<:Real};
     init_strategy::Settings.AbstractInitStrategy=Settings.InitRandomPosterior(200),
     stopping_criterion::Settings.AbstractStopping=Settings.StoppingELBO(1e-10, 20),
-    regularization::Settings.MaybeRegularization=nothing, max_iter::Unsigned=UInt(1000)
+    regularization::Settings.MaybeRegularization=nothing, max_iter::Unsigned=UInt(5_000)
 ) where T<:Real
     if gmm.N != length(data)
         gmm.N = length(data)

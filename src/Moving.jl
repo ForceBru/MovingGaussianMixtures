@@ -48,7 +48,7 @@ across given data `stream`. `kwargs` are passed to `fit!(::GaussianMixture, ...)
 function fit!(
     mov::Moving{T}, stream::AV{<:Real}, win_size::Integer;
     first_init::Settings.AbstractInitStrategy=Settings.InitRandomPosterior(200),
-    init_strategy::Settings.AbstractInitStrategy=Settings.InitKeepPosterior(),
+    init_strategy::Settings.AbstractInitStrategy=Settings.InitKeepParameters(),
     kwargs...
 ) where T<:Real
     N = length(stream)
@@ -68,7 +68,7 @@ function fit!(
     window = @view stream[1:the_range[1]]
     fit!(mov.mix, window; init_strategy=first_init, kwargs...)
 
-    @showprogress 1 "Fitting mixtures..." for off in the_range
+    @showprogress 0.5 "Fitting mixtures..." for off in the_range
         window = @view stream[off - the_range[1] + 1 : off]
 
         fit!(mov.mix, window; init_strategy, kwargs...)
