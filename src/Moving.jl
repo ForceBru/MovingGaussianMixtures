@@ -25,6 +25,9 @@ mutable struct Moving{T<:Real, G<:GaussianMixture{T}}
     `n`th _column_ containts estimates for the `n`th moving window
     """
     V::Matrix{T}
+
+    "Convergence indicators for each window"
+    converged::BitVector
 end
 
 function Moving(gmm::GaussianMixture{T}) where T<:Real
@@ -32,7 +35,7 @@ function Moving(gmm::GaussianMixture{T}) where T<:Real
     M = copy(P)
     V = copy(P)
 
-    Moving(gmm, P, M, V)
+    Moving(gmm, P, M, V, BitVector())
 end
 
 """
@@ -56,13 +59,14 @@ function fit!(
         mov.V = copy(mov.P)
     end
 
+    mov.converged = BitVector(ones(N))
     the_range = win_size:N
 
     # Initialize the mixture
     window = @view stream[1:the_range[1]]
     fit!(mov.mix, window; init_strategy=first_init, kwargs...)
 
-    @showprogress for off in the_range
+    @showprogress 1 "Fitting mixtures..." for off in the_range
         window = @view stream[off - the_range[1] + 1 : off]
 
         fit!(mov.mix, window; init_strategy, kwargs...)
@@ -75,6 +79,7 @@ function fit!(
         mov.P[:, off] .= mov.mix.p
         mov.M[:, off] .= mov.mix.mu
         mov.V[:, off] .= mov.mix.var
+        mov.converged[off] = mov.mix.converged
     end
 
     mov

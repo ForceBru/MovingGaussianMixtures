@@ -37,6 +37,8 @@ mutable struct GaussianMixture{T<:Real}
     n_iter::UInt
     "Values of `(ELBO - posterior entropy)` for each EM iteration"
     history_ELBO::Vector{T}
+    "Convergence indicator"
+    converged::Bool
 
     function GaussianMixture(n_components::Integer, T::Type{<:Real}=Float64)
         (n_components > 0) || throw(ArgumentError(
@@ -50,7 +52,7 @@ mutable struct GaussianMixture{T<:Real}
             n_components, N,
             p, copy(p), copy(p),
             zeros(T, K, N),
-            0x00, T[]
+            0x00, T[], false
         )
     end
 end
@@ -171,6 +173,7 @@ function fit!(
 
     gmm.n_iter = 0x00
     gmm.history_ELBO = T[]
+    gmm.converged = false
     initialize!(gmm, data, init_strategy, regularization)
     !has_zeros(gmm.var) || throw(ZeroVarianceException(gmm.var))
 
@@ -183,6 +186,8 @@ function fit!(
         push!(gmm.history_ELBO, ELBO_1(gmm, data, regularization))
         gmm.n_iter += 0x01
     end
+
+    gmm.converged = should_stop(gmm, stopping_criterion)
 
     gmm
 end
