@@ -24,7 +24,7 @@ end
 
 @inline function ELBO_1(
     G::AM{<:Real}, p::AV{<:Real}, mu::AV{<:Real}, var::AV{<:Real}, x::AV{<:Real},
-    ::Union{Settings.AbstractRegPosterior, Settings.RegVarianceSimple}
+    ::Union{Settings.AbstractRegPosterior, Settings.RegVarianceSimple, Settings.RegVarianceReset}
 )
     # Posterior regularization does NOT affect ELBO
     ELBO_1(G, p, mu, var, x, nothing)
@@ -111,6 +111,26 @@ function calc_variances!(
 )::Nothing
     calc_variances!(var, G, ev, x, mu, nothing)
     var .+= reg.eps
+
+    nothing
+end
+
+function calc_variances!(
+    var::AV{<:Real}, G::AM{<:Real}, ev::AV{<:Real}, x::AV{<:Real}, mu::AV{<:Real},
+    reg::Settings.RegVarianceReset
+)::Nothing
+    K, _ = size(G)
+    calc_variances!(var, G, ev, x, mu, nothing)
+
+    valid_vars = var[.~is_almost_zero.(var)]
+    length(valid_vars) != 0 || throw(ZeroVarianceException(var))
+    max_variance = maximum(valid_vars)
+    @inbounds for k in 1:K
+        if is_almost_zero(var[k])
+            var[k] = max_variance
+            mu[k] = rand(x) * rand()
+        end
+    end
 
     nothing
 end

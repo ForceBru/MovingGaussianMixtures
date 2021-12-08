@@ -74,7 +74,8 @@ distribution(gmm::GM) = UnivariateGMM(
     gmm.mu, sqrt.(gmm.var), Categorical(gmm.p)
 )
 
-has_zeros(x::AV{<:Real})::Bool = any(s->isnan(1/s), x)
+is_almost_zero(x::Real)::Bool = isnan(1 / x)
+has_zeros(x::AV{<:Real})::Bool = any(is_almost_zero, x)
 
 step_M!(gmm::GM, data::AV{<:Real}, reg::Settings.MaybeRegularization) =
     step_M!(gmm.G, gmm.p, gmm.mu, gmm.var, data, reg)

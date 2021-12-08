@@ -138,4 +138,13 @@ struct RegVarianceSimple{T<:Real} <: AbstractRegPrior
     end
 end
 
+"""
+$(TYPEDEF)
+
+If the variance of a component is too close to zero,
+set this component's variance to equal the maximum estimate
+and the component's mean - to a randomly scaled element of the training data.
+"""
+struct RegVarianceReset <: AbstractRegPrior end
+
 end
