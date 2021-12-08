@@ -166,6 +166,9 @@ function fit!(
     stopping_criterion::Settings.AbstractStopping=Settings.StoppingELBO(1e-10, 20),
     regularization::Settings.MaybeRegularization=nothing, max_iter::Unsigned=UInt(5_000)
 ) where T<:Real
+    @assert length(data) > 0
+    @assert max_iter > 0
+    
     if gmm.N != length(data)
         gmm.N = length(data)
         gmm.G = zeros(T, gmm.K, gmm.N)

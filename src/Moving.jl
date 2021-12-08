@@ -58,10 +58,12 @@ function fit!(
         mov.P = zeros(T, mov.mix.K, N)
         mov.M = copy(mov.P)
         mov.V = copy(mov.P)
-        mov.ELBOs = fill(T(-Inf), N)
+        mov.ELBOs = fill(NaN, N)
     end
 
-    mov.converged = BitVector(ones(N))
+    mov.converged = BitVector(zeros(N))
+    mov.converged[1:win_size-1] .= 1
+    
     the_range = win_size:N
 
     # Initialize the mixture
