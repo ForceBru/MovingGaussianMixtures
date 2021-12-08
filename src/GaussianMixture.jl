@@ -162,7 +162,7 @@ function fit!(
     gmm::GM{T}, data::AV{<:Real};
     init_strategy::Settings.AbstractInitStrategy=Settings.InitRandomPosterior(200),
     stopping_criterion::Settings.AbstractStopping=Settings.StoppingELBO(1e-10, 20),
-    regularization::Settings.MaybeRegularization=nothing
+    regularization::Settings.MaybeRegularization=nothing, max_iter::Unsigned=UInt(1000)
 ) where T<:Real
     if gmm.N != length(data)
         gmm.N = length(data)
@@ -175,7 +175,7 @@ function fit!(
     !has_zeros(gmm.var) || throw(ZeroVarianceException(gmm.var))
 
     push!(gmm.history_ELBO, ELBO_1(gmm, data, regularization))
-    while !should_stop(gmm, stopping_criterion)
+    while gmm.n_iter < max_iter && !should_stop(gmm, stopping_criterion)
         step_E!(gmm, data, regularization)
         step_M!(gmm, data, regularization)
         !has_zeros(gmm.var) || throw(ZeroVarianceException(gmm.var))
