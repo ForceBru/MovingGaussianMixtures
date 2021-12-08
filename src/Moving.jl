@@ -62,7 +62,7 @@ function fit!(
     window = @view stream[1:the_range[1]]
     fit!(mov.mix, window; init_strategy=first_init, kwargs...)
 
-    for off in the_range
+    @showprogress for off in the_range
         window = @view stream[off - the_range[1] + 1 : off]
 
         fit!(mov.mix, window; init_strategy, kwargs...)

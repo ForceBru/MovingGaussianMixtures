@@ -2,6 +2,7 @@ module MovingMixtures
 
 export GaussianMixture, Moving, fit!, distribution, Settings
 
+using ProgressMeter
 using DocStringExtensions
 using LoopVectorization
 using Distributions
