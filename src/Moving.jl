@@ -28,6 +28,7 @@ mutable struct Moving{T<:Real, G<:GaussianMixture{T}}
 
     "Convergence indicators for each window"
     converged::BitVector
+    ELBOs::Vector{T}
 end
 
 function Moving(gmm::GaussianMixture{T}) where T<:Real
@@ -35,7 +36,7 @@ function Moving(gmm::GaussianMixture{T}) where T<:Real
     M = copy(P)
     V = copy(P)
 
-    Moving(gmm, P, M, V, BitVector())
+    Moving(gmm, P, M, V, BitVector(), T[])
 end
 
 """
@@ -57,6 +58,7 @@ function fit!(
         mov.P = zeros(T, mov.mix.K, N)
         mov.M = copy(mov.P)
         mov.V = copy(mov.P)
+        mov.ELBOs = fill(T(-Inf), N)
     end
 
     mov.converged = BitVector(ones(N))
@@ -80,6 +82,7 @@ function fit!(
         mov.M[:, off] .= mov.mix.mu
         mov.V[:, off] .= mov.mix.var
         mov.converged[off] = mov.mix.converged
+        mov.ELBOs[off] = mov.mix.history_ELBO[end]
     end
 
     mov
