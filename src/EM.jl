@@ -1,5 +1,33 @@
 @inline normal_pdf(x::Real, mu::Real, var::Real) = exp(-(x - mu)^2 / (2var)) / sqrt(2pi * var)
 
+const LN2PI = log(2pi)
+
+function log_likelihood(
+    G::AM{<:Real}, p::AV{<:Real}, mu::AV{<:Real}, var::AV{<:Real}, x::AV{<:Real},
+    ::Nothing
+)
+    K, N = size(G)
+    ret = G |> eltype |> zero
+
+    @tturbo for n in 1:N
+        s = 0
+        for k in 1:K
+            s += p[k] * normal_pdf(x[n], mu[k], var[k])
+        end
+        ret += log(s)
+    end
+
+    ret
+end
+
+@inline function log_likelihood(
+    G::AM{<:Real}, p::AV{<:Real}, mu::AV{<:Real}, var::AV{<:Real}, x::AV{<:Real},
+    ::Union{Settings.AbstractRegPosterior, Settings.RegVarianceSimple, Settings.RegVarianceReset}
+)
+    # Posterior regularization does NOT affect log-likelihood
+    log_likelihood(G, p, mu, var, x, nothing)
+end
+
 """
 Compute E_q log[ p(X, Z | THETA) ]
 
@@ -10,12 +38,12 @@ function ELBO_1(
     ::Nothing
 )
     K, N = size(G)
-    ln2pi = log(2pi)
-    ret = 0.0
+    ret = G |> eltype |> zero
 
     @tturbo for n in 1:N, k in 1:K
         ret += G[k, n] * (
-            log(p[k]) - (ln2pi + log(var[k]) + (x[n] - mu[k])^2 / var[k]) / 2
+            log(p[k]) - (LN2PI + log(var[k]) + (x[n] - mu[k])^2 / var[k]) / 2
+            - log(G[k, n]) #FIXME: entropy calculation correct?
         )
     end
 

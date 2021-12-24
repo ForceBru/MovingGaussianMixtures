@@ -35,8 +35,10 @@ mutable struct GaussianMixture{T<:Real}
 
     "Number of EM iterations"
     n_iter::UInt
-    "Values of `(ELBO - posterior entropy)` for each EM iteration"
+    "Values of ELBO for each EM iteration"
     history_ELBO::Vector{T}
+    "Values of log-likelihood for each EM iteration"
+    history_loglik::Vector{T}
     "Convergence indicator"
     converged::Bool
 
@@ -52,7 +54,8 @@ mutable struct GaussianMixture{T<:Real}
             n_components, N,
             p, copy(p), copy(p),
             zeros(T, K, N),
-            0x00, T[], false
+            0x00, T[], T[],
+            false
         )
     end
 end
@@ -85,7 +88,9 @@ step_E!(gmm::GM, data::AV{<:Real}, reg::Settings.MaybeRegularization) =
     step_E!(gmm.G, gmm.p, gmm.mu, gmm.var, data, reg)
 ELBO_1(gmm::GM, data::AV{<:Real}, reg::Settings.MaybeRegularization) =
     ELBO_1(gmm.G, gmm.p, gmm.mu, gmm.var, data, reg)
-
+log_likelihood(gmm::GM, data::AV{<:Real}, reg::Settings.MaybeRegularization) =
+    log_likelihood(gmm.G, gmm.p, gmm.mu, gmm.var, data, reg)
+    
 
 # ===== Initialization =====
 """
@@ -190,17 +195,20 @@ function fit!(
 
     gmm.n_iter = 0x00
     gmm.history_ELBO = T[]
+    gmm.history_loglik = T[]
     gmm.converged = false
     initialize!(gmm, data, init_strategy, regularization)
     !has_zeros(gmm.var) || throw(ZeroVarianceException(gmm.var))
 
     push!(gmm.history_ELBO, ELBO_1(gmm, data, regularization))
+    push!(gmm.history_loglik, log_likelihood(gmm, data, regularization))
     while gmm.n_iter < max_iter && !should_stop(gmm, stopping_criterion)
         step_E!(gmm, data, regularization)
         step_M!(gmm, data, regularization)
         !has_zeros(gmm.var) || throw(ZeroVarianceException(gmm.var))
 
         push!(gmm.history_ELBO, ELBO_1(gmm, data, regularization))
+        push!(gmm.history_loglik, log_likelihood(gmm, data, regularization))
         gmm.n_iter += 0x01
         next!(progr)
     end
