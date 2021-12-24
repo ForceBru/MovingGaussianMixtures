@@ -13,7 +13,7 @@ function ELBO_1(
     ln2pi = log(2pi)
     ret = 0.0
 
-    @tturbo for k in 1:K, n in 1:N
+    @tturbo for n in 1:N, k in 1:K
         ret += G[k, n] * (
             log(p[k]) - (ln2pi + log(var[k]) + (x[n] - mu[k])^2 / var[k]) / 2
         )
@@ -78,7 +78,7 @@ function calc_means!(mu::AV{<:Real}, G::AM{<:Real}, ev::AV{<:Real}, x::AV{<:Real
     K, N = size(G)
 
     mu .= zero(eltype(mu))
-    @tturbo for k in 1:K, n in 1:N
+    @tturbo for n in 1:N, k in 1:K
         mu[k] += G[k, n] / ev[k] * x[n]
     end
     nothing
@@ -94,7 +94,7 @@ function calc_variances!(
     K, N = size(G)
 
     var .= zero(eltype(var))
-    @tturbo for k in 1:K, n in 1:N
+    @tturbo for n in 1:N, k in 1:K
         var[k] += G[k, n] / ev[k] * (x[n] - mu[k])^2
     end
     nothing
