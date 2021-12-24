@@ -34,14 +34,9 @@ end
 
 function regularize_posteriors!(G::AM{<:Real}, reg::Settings.RegPosteriorSimple)::Nothing
     K = size(G, 1)
-    s = if iszero(reg.eps)
-        0
-    else
-        1/reg.eps > 1/K || throw(InvalidMinPosteriorProbException(reg.eps, K))
-        1 / (1/reg.eps - 1/K)
-    end
+    s = reg.s
 
-    @. G = (G + s) / (1 + s*K)
+    @. G = (G + s) / (1 + s * K)
 
     nothing
 end
@@ -51,7 +46,7 @@ function step_E!(
     reg::Union{Settings.AbstractRegPosterior, Nothing}
 )::Nothing
     K, N = size(G)
-    normalization = zeros(1, N)
+    normalization = zeros(eltype(G), 1, N)
     @tturbo for n in 1:N, k in 1:K
         G[k, n] = p[k] * normal_pdf(x[n], mu[k], var[k])
         normalization[1, n] += G[k, n]
@@ -65,13 +60,15 @@ end
 
 @inline function step_E!(
     G::AM{<:Real}, p::AV{<:Real}, mu::AV{<:Real}, var::AV{<:Real}, x::AV{<:Real},
-    reg::Settings.AbstractRegPrior
+    ::Settings.AbstractRegPrior
 )::Nothing
     # Prior regularization does NOT affect Expectation step
     step_E!(G, p, mu, var, x, nothing)
 end
 
-function calc_weights!(p::AV{<:Real}, G::AM{<:Real}, ev::AV{<:Real}, ::Nothing)::Nothing
+@inline function calc_weights!(p::AV{<:Real}, G::AM{<:Real}, ev::AV{<:Real}, ::Nothing)::Nothing
+    all(>(0), ev) || throw(ZeroNormalizationException())
+
     p .= ev ./ sum(ev)
     nothing
 end
@@ -82,7 +79,7 @@ end
 function calc_means!(mu::AV{<:Real}, G::AM{<:Real}, ev::AV{<:Real}, x::AV{<:Real}, ::Nothing)::Nothing
     K, N = size(G)
 
-    mu .= 0
+    mu .= zero(eltype(mu))
     @tturbo for k in 1:K, n in 1:N
         mu[k] += G[k, n] / ev[k] * x[n]
     end
@@ -98,7 +95,7 @@ function calc_variances!(
 )::Nothing
     K, N = size(G)
 
-    var .= 0
+    var .= zero(eltype(var))
     @tturbo for k in 1:K, n in 1:N
         var[k] += G[k, n] / ev[k] * (x[n] - mu[k])^2
     end
@@ -117,7 +114,7 @@ end
 
 function calc_variances!(
     var::AV{<:Real}, G::AM{<:Real}, ev::AV{<:Real}, x::AV{<:Real}, mu::AV{<:Real},
-    reg::Settings.RegVarianceReset
+    ::Settings.RegVarianceReset
 )::Nothing
     K, _ = size(G)
     calc_variances!(var, G, ev, x, mu, nothing)
@@ -144,9 +141,7 @@ function step_M!(
     G::AM{<:Real}, p::AV{<:Real}, mu::AV{<:Real}, var::AV{<:Real}, x::AV{<:Real},
     reg::Union{Settings.AbstractRegPrior, Nothing}
 )::Nothing
-    K, N = size(G)
     evidences = sum(G, dims=2) |> vec
-    all(>(0), evidences) || throw(ZeroNormalizationException())
 
     calc_weights!(p, G, evidences, reg)
     calc_means!(mu, G, evidences, x, reg)
@@ -155,7 +150,7 @@ end
 
 @inline function step_M!(
     G::AM{<:Real}, p::AV{<:Real}, mu::AV{<:Real}, var::AV{<:Real}, x::AV{<:Real},
-    reg::Settings.AbstractRegPosterior
+    ::Settings.AbstractRegPosterior
 )::Nothing
     # Posterior regularization does NOT affect maximization step
     step_M!(G, p, mu, var, x, nothing)

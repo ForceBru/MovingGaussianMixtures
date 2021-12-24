@@ -86,6 +86,7 @@ step_E!(gmm::GM, data::AV{<:Real}, reg::Settings.MaybeRegularization) =
 ELBO_1(gmm::GM, data::AV{<:Real}, reg::Settings.MaybeRegularization) =
     ELBO_1(gmm.G, gmm.p, gmm.mu, gmm.var, data, reg)
 
+
 # ===== Initialization =====
 """
 $(TYPEDSIGNATURES)
@@ -161,10 +162,11 @@ $(TYPEDSIGNATURES)
 Fit Gaussian mixture model `gmm` to `data`.
 """
 function fit!(
-    gmm::GM{T}, data::AV{<:Real};
+    gmm::GaussianMixture{T}, data::AV{<:Real};
     init_strategy::Settings.AbstractInitStrategy=Settings.InitRandomPosterior(200),
     stopping_criterion::Settings.AbstractStopping=Settings.StoppingELBO(1e-10, 20),
-    regularization::Settings.MaybeRegularization=nothing, max_iter::Unsigned=UInt(5_000)
+    regularization::Settings.MaybeRegularization=nothing,
+    max_iter::Unsigned=UInt(5_000), quiet::Bool=true
 ) where T<:Real
     @assert length(data) > 0
     @assert max_iter > 0
@@ -173,6 +175,18 @@ function fit!(
         gmm.N = length(data)
         gmm.G = zeros(T, gmm.K, gmm.N)
     end
+
+    # Ensure that the regularization is computed
+    # for the correct number of components
+    if regularization isa Settings.RegPosteriorSimple
+        regularization = Settings.RegPosteriorSimple(regularization.eps, gmm.K)
+    end
+
+    progr = Progress(
+        max_iter, dt=1, desc="Fitting:",
+        barglyphs=BarGlyphs("[=> ]"), showspeed=true,
+        enabled=!quiet
+    )
 
     gmm.n_iter = 0x00
     gmm.history_ELBO = T[]
@@ -188,8 +202,10 @@ function fit!(
 
         push!(gmm.history_ELBO, ELBO_1(gmm, data, regularization))
         gmm.n_iter += 0x01
+        next!(progr)
     end
 
+    ProgressMeter.finish!(progr)
     gmm.converged = should_stop(gmm, stopping_criterion)
 
     gmm

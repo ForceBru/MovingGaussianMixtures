@@ -94,8 +94,8 @@ const MaybeRegularization = Union{AbstractRegularization, Nothing}
 
 """
 $(TYPEDEF)
-Regularize posterior q(z) such that `q(z) >= eps` for any `z`.
-This simple version does this by using this as `q(z)`:
+Regularize posterior q(z) such that `q(z) >= eps >= 0` for any `z`.
+This simple version does it by using this as `q(z)`:
 
 ```math
 q(z) = [p(z|x, \\theta) + s] / [1 + s * K]
@@ -110,12 +110,32 @@ struct RegPosteriorSimple{T<:Real} <: AbstractRegPosterior
     "Minimum probability in the posterior distribution q(z)"
     eps::T
 
-    function RegPosteriorSimple(eps::T) where T<:Real
-        @assert eps >= 0
+    s::T
 
-        new{T}(eps)
+    "Number of mixture components"
+    K::Integer
+
+    function RegPosteriorSimple(eps::T, K::Integer) where T<:Real
+        @assert eps ≥ 0
+        @assert K > 0
+
+        s::T = if iszero(eps)
+            eps
+        else
+            1/eps > 1/K || throw(InvalidMinPosteriorProbException(eps, K))
+            1 / (1/eps - 1/K)
+        end
+
+        new{T}(eps, s, K)
     end
 end
+
+"""
+$(TYPEDSIGNATURES)
+
+Regularize posterior q(z) such that `q(z) >= eps >= 0` for any `z`.
+"""
+RegPosteriorSimple(eps::Real) = RegPosteriorSimple(eps, 1)
 
 """
 $(TYPEDEF)
