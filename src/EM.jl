@@ -67,8 +67,6 @@ end
 end
 
 @inline function calc_weights!(p::AV{<:Real}, G::AM{<:Real}, ev::AV{<:Real}, ::Nothing)::Nothing
-    all(>(0), ev) || throw(ZeroNormalizationException())
-
     p .= ev ./ sum(ev)
     nothing
 end
@@ -117,15 +115,19 @@ function calc_variances!(
     ::Settings.RegVarianceReset
 )::Nothing
     K, _ = size(G)
+    # 1. Calculate variances as usual
     calc_variances!(var, G, ev, x, mu, nothing)
 
-    valid_vars = var[.~is_almost_zero.(var)]
-    length(valid_vars) != 0 || throw(ZeroVarianceException(var))
-    max_variance = maximum(valid_vars)
+    # 2. Select largest variance
+    valid_mask = .~is_almost_zero.(var)
+    any(valid_mask) || throw(ZeroVarianceException(var))
+    max_variance = maximum(var[valid_mask])
+
+    # 3. Reposition Gaussians with too low variance
     @inbounds for k in 1:K
-        if is_almost_zero(var[k])
+        if !valid_mask[k]
             var[k] = max_variance
-            mu[k] = rand(x) * rand()
+            mu[k] = rand(x) * 2rand()
         end
     end
 
@@ -142,6 +144,7 @@ function step_M!(
     reg::Union{Settings.AbstractRegPrior, Nothing}
 )::Nothing
     evidences = sum(G, dims=2) |> vec
+    all(>(0), evidences) || throw(ZeroNormalizationException())
 
     calc_weights!(p, G, evidences, reg)
     calc_means!(mu, G, evidences, x, reg)
