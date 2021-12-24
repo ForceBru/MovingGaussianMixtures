@@ -151,6 +151,8 @@ $(TYPEDFIELDS)
 struct RegVarianceSimple{T<:Real} <: AbstractRegPrior
     "Small value to add to components' variances"
     eps::T
+    #FIXME: this results in a really high KL divergence
+    # How bad is this??? VI also does this - is it "bad"?..
 
     function RegVarianceSimple(eps::T) where T<:Real
         @assert eps > 0

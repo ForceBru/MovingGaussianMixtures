@@ -29,7 +29,7 @@ end
 end
 
 """
-Compute E_q log[ p(X, Z | THETA) ]
+Compute ELBO = E_q ( log[p(X, Z | THETA)] - log[q(Z)] )
 
 No regularization
 """
@@ -44,6 +44,7 @@ function ELBO_1(
         ret += G[k, n] * (
             log(p[k]) - (LN2PI + log(var[k]) + (x[n] - mu[k])^2 / var[k]) / 2
             - log(G[k, n]) #FIXME: entropy calculation correct?
+            # This results in `NaN` if `G[k, n] ≈ 0` when no posterior regularization...
         )
     end
 
