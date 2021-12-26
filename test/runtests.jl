@@ -21,9 +21,9 @@ end
         fit!(gmm, data)
 
         @test gmm.converged
-        @test isapprox(gmm.p, distr.prior.p; atol)
-        @test isapprox(gmm.mu, distr.means; atol)
-        @test isapprox(gmm.var, distr.stds.^2; atol)
+        @test isapprox(sort(gmm.p), sort(distr.prior.p); atol)
+        @test isapprox(sort(gmm.mu), sort(distr.means); atol)
+        @test isapprox(sort(gmm.var), sort(distr.stds.^2); atol)
     end
 
     @testset "2 components zero means" begin
@@ -33,9 +33,9 @@ end
         fit!(gmm, data)
 
         @test gmm.converged
-        @test isapprox(gmm.p, distr.prior.p; atol)
-        @test isapprox(gmm.mu, distr.means; atol)
-        @test isapprox(gmm.var, distr.stds.^2; atol)
+        @test isapprox(sort(gmm.p), sort(distr.prior.p); atol)
+        @test isapprox(sort(gmm.mu), sort(distr.means); atol)
+        @test isapprox(sort(gmm.var), sort(distr.stds.^2); atol)
     end
 
     @testset "Variance reg by addition" begin
