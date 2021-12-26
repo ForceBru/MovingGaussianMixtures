@@ -61,7 +61,7 @@ end
 const GM = GaussianMixture{T} where T
 
 function Base.show(io::IO, ::MIME"text/plain", gmm::GM; digits::Integer=3)
-    print(io, typeof(gmm), " with $(gmm.K) components:\n")
+    print(io, typeof(gmm), " with $(gmm.K) components (converged: $(gmm.converged)):\n")
     print(io, "\tp  = ", round.(gmm.p; digits), '\n')
     print(io, "\tmu = ", round.(gmm.mu; digits), '\n')
     print(io, "\tvar= ", round.(gmm.var; digits))
@@ -79,9 +79,7 @@ distribution(gmm::GM) = UnivariateGMM(
 
 # Can't use `is_almost_zero(x::T)::Bool where T<:Real = x ≈ zero(T)`
 # See https://github.com/JuliaLang/julia/issues/21847
-function is_almost_zero(x::T)::Bool where T<:Real
-    x ≈ zero(T)
-end
+is_almost_zero(x::Real)::Bool = x ≈ zero(x)
 has_zeros(x::AV{<:Real})::Bool = any(is_almost_zero, x)
 
 step_M!(gmm::GM, data::AV{<:Real}, reg::Settings.MaybeRegularization) =
