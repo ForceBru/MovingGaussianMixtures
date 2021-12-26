@@ -37,8 +37,6 @@ mutable struct GaussianMixture{T<:Real}
     n_iter::UInt
     "Values of ELBO for each EM iteration"
     history_ELBO::Vector{T}
-    "Values of log-likelihood for each EM iteration"
-    history_loglik::Vector{T}
     "Convergence indicator"
     converged::Bool
 
@@ -54,7 +52,7 @@ mutable struct GaussianMixture{T<:Real}
             n_components, N,
             p, copy(p), copy(p),
             zeros(T, K, N),
-            0x00, T[], T[],
+            0x00, T[],
             false
         )
     end
@@ -79,7 +77,11 @@ distribution(gmm::GM) = UnivariateGMM(
     gmm.mu, sqrt.(gmm.var), Categorical(gmm.p)
 )
 
-is_almost_zero(x::Real)::Bool = x ≈ 0
+# Can't use `is_almost_zero(x::T)::Bool where T<:Real = x ≈ zero(T)`
+# See https://github.com/JuliaLang/julia/issues/21847
+function is_almost_zero(x::T)::Bool where T<:Real
+    x ≈ zero(T)
+end
 has_zeros(x::AV{<:Real})::Bool = any(is_almost_zero, x)
 
 step_M!(gmm::GM, data::AV{<:Real}, reg::Settings.MaybeRegularization) =
@@ -193,28 +195,27 @@ function fit!(
         enabled=!quiet
     )
 
-    gmm.n_iter = 0x00
-    gmm.history_ELBO = T[]
-    gmm.history_loglik = T[]
+    gmm.n_iter = 0x01
+    gmm.history_ELBO = Vector{T}(undef, max_iter)
+    gmm.history_ELBO .= NaN
     gmm.converged = false
     initialize!(gmm, data, init_strategy, regularization)
     !has_zeros(gmm.var) || throw(ZeroVarianceException(gmm.var))
 
-    push!(gmm.history_ELBO, ELBO_1(gmm, data, regularization))
-    push!(gmm.history_loglik, log_likelihood(gmm, data, regularization))
+    gmm.history_ELBO[gmm.n_iter] = ELBO_1(gmm, data, regularization)
     while gmm.n_iter < max_iter && !should_stop(gmm, stopping_criterion)
         step_E!(gmm, data, regularization)
         step_M!(gmm, data, regularization)
         !has_zeros(gmm.var) || throw(ZeroVarianceException(gmm.var))
 
-        push!(gmm.history_ELBO, ELBO_1(gmm, data, regularization))
-        push!(gmm.history_loglik, log_likelihood(gmm, data, regularization))
         gmm.n_iter += 0x01
+        gmm.history_ELBO[gmm.n_iter] = ELBO_1(gmm, data, regularization)
         next!(progr)
     end
 
     ProgressMeter.finish!(progr)
     gmm.converged = should_stop(gmm, stopping_criterion)
+    gmm.history_ELBO = gmm.history_ELBO[.~isnan.(gmm.history_ELBO)]
 
     gmm
 end
