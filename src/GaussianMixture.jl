@@ -88,8 +88,8 @@ step_M!(gmm::GM, data::AV{<:Real}, reg::Settings.MaybeRegularization) =
     step_M!(gmm.G, gmm.p, gmm.mu, gmm.var, data, reg)
 step_E!(gmm::GM, data::AV{<:Real}, reg::Settings.MaybeRegularization) =
     step_E!(gmm.G, gmm.p, gmm.mu, gmm.var, data, reg)
-ELBO_1(gmm::GM, data::AV{<:Real}, reg::Settings.MaybeRegularization) =
-    ELBO_1(gmm.G, gmm.p, gmm.mu, gmm.var, data, reg)
+ELBO(gmm::GM, data::AV{<:Real}, reg::Settings.MaybeRegularization) =
+    ELBO(gmm.G, gmm.p, gmm.mu, gmm.var, data, reg)
 log_likelihood(gmm::GM, data::AV{<:Real}, reg::Settings.MaybeRegularization) =
     log_likelihood(gmm.G, gmm.p, gmm.mu, gmm.var, data, reg)
     
@@ -202,14 +202,14 @@ function fit!(
     initialize!(gmm, data, init_strategy, regularization)
     !has_zeros(gmm.var) || throw(ZeroVarianceException(gmm.var))
 
-    gmm.history_ELBO[gmm.n_iter] = ELBO_1(gmm, data, regularization)
+    gmm.history_ELBO[gmm.n_iter] = ELBO(gmm, data, regularization)
     while gmm.n_iter < max_iter && !should_stop(gmm, stopping_criterion)
         step_E!(gmm, data, regularization)
         step_M!(gmm, data, regularization)
         !has_zeros(gmm.var) || throw(ZeroVarianceException(gmm.var))
 
         gmm.n_iter += 0x01
-        gmm.history_ELBO[gmm.n_iter] = ELBO_1(gmm, data, regularization)
+        gmm.history_ELBO[gmm.n_iter] = ELBO(gmm, data, regularization)
         next!(progr)
     end
 

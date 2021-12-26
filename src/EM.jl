@@ -33,7 +33,7 @@ Compute ELBO = E_q ( log[p(X, Z | THETA)] - log[q(Z)] )
 
 No regularization
 """
-function ELBO_1(
+function ELBO(
     G::AM{<:Real}, p::AV{<:Real}, mu::AV{<:Real}, var::AV{<:Real}, x::AV{<:Real},
     ::Nothing
 )
@@ -43,7 +43,7 @@ function ELBO_1(
     @tturbo for n in 1:N, k in 1:K
         ret += G[k, n] * (
             log(p[k]) - (LN2PI + log(var[k]) + (x[n] - mu[k])^2 / var[k]) / 2
-            - log(G[k, n]) #FIXME: entropy calculation correct?
+            - log(G[k, n] + 1e-100) #FIXME: entropy calculation correct?
             # This results in `NaN` if `G[k, n] ≈ 0` when no posterior regularization...
         )
     end
@@ -51,12 +51,12 @@ function ELBO_1(
     ret
 end
 
-@inline function ELBO_1(
+@inline function ELBO(
     G::AM{<:Real}, p::AV{<:Real}, mu::AV{<:Real}, var::AV{<:Real}, x::AV{<:Real},
     ::Union{Settings.AbstractRegPosterior, Settings.RegVarianceSimple, Settings.RegVarianceReset}
 )
     # Posterior regularization does NOT affect ELBO
-    ELBO_1(G, p, mu, var, x, nothing)
+    ELBO(G, p, mu, var, x, nothing)
 end
 
 @inline regularize_posteriors!(G::AM{<:Real}, ::Nothing)::Nothing = nothing
