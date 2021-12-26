@@ -1,6 +1,7 @@
 module MovingMixtures
 
 export GaussianMixture, Moving, fit!, distribution, Settings
+export cauchy_schwarz
 
 using ProgressMeter
 using DocStringExtensions
@@ -16,5 +17,8 @@ include("Settings.jl")
 include("EM.jl")
 include("GaussianMixture.jl")
 include("Moving.jl")
+
+include("Divergences.jl")
+using .Divergences
 
 end
