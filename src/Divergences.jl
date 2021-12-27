@@ -13,8 +13,8 @@ using Distributions: UnivariateGMM
 function cs_part(gmm::UnivariateGMM)
     0.5 * log(
         #FIXME: the paper DOESN'T divide by sqrt(2),
-        # but if you don't do this, `cauchy_schwarz(gmm, gmm) ≠ 0`,
-        # but the distance between the same GMM must be zero!
+        # but if you don't do this, `cauchy_schwarz(gmm, gmm) >> 0`,
+        # but the distance between the same GMM must be exactly zero!
         sum(@. gmm.prior.p^2 / sqrt(2π) / gmm.stds / sqrt(2))
         + 2 * sum(
             sum(
