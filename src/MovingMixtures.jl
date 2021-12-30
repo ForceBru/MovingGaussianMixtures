@@ -2,6 +2,7 @@ module MovingMixtures
 
 export GaussianMixture, Moving, fit!, distribution, Settings
 export Online, Windowed, DynamicMixture
+export n_components, get_ELBO, get_params, has_converged
 export cauchy_schwarz
 
 using ProgressMeter
