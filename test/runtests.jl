@@ -13,53 +13,61 @@ function sample_GMM(mus, stds, ps)
     distr, data
 end
 
-@testset verbose=true "MovingMixtures" begin
+@testset "MovingMixtures" begin
 
-@testset verbose=true "Simple mixtures" begin
-    @testset "2 components easy $i" for i in 1:10
-        distr, data = sample_GMM([-1, 1], [.2, .3], [.4, .6])
+@testset "Simple mixtures" begin
+    @testset "2 components easy" begin
+        for i in 1:10
+            distr, data = sample_GMM([-1, 1], [.2, .3], [.4, .6])
 
-        gmm = GaussianMixture(2)
-        fit!(gmm, data)
+            gmm = GaussianMixture(2)
+            fit!(gmm, data)
 
-        @test gmm.converged
-        @test sort(gmm.p) ≈ sort(distr.prior.p) atol=atol
-        @test sort(gmm.mu) ≈ sort(distr.means) atol=atol
-        @test sort(gmm.var) ≈ sort(distr.stds.^2) atol=atol
+            @test gmm.converged
+            @test sort(gmm.p) ≈ sort(distr.prior.p) atol=atol
+            @test sort(gmm.mu) ≈ sort(distr.means) atol=atol
+            @test sort(gmm.var) ≈ sort(distr.stds.^2) atol=atol
+        end
     end
 
-    @testset "2 components zero means $i" for i in 1:10
-        distr, data = sample_GMM([0, 0], [.2, .3], [.4, .6])
+    @testset "2 components zero means" begin
+        for i in 1:10
+            distr, data = sample_GMM([0, 0], [.2, .3], [.4, .6])
 
-        gmm = GaussianMixture(2)
-        fit!(gmm, data)
+            gmm = GaussianMixture(2)
+            fit!(gmm, data)
 
-        @test gmm.converged
-        #FIXME: this fails, but do we care?
-        # @test sort(gmm.p) ≈ sort(distr.prior.p) atol=atol
-        @test sort(gmm.mu) ≈ sort(distr.means) atol=atol
-        @test sort(gmm.var) ≈ sort(distr.stds.^2) atol=atol
+            @test gmm.converged
+            #FIXME: this fails, but do we care?
+            @test sort(gmm.p) ≈ sort(distr.prior.p) atol=atol broken=true
+            @test sort(gmm.mu) ≈ sort(distr.means) atol=atol
+            @test sort(gmm.var) ≈ sort(distr.stds.^2) atol=atol
+        end
     end
 end
 
-@testset verbose=true "Regularization" begin
-    @testset "Variance reg by addition $i" for i in 1:10
+@testset "Regularization" begin
+    @testset "Variance reg by addition" begin
         REG = 1e-4
-        distr, data = sample_GMM([0, 0], [.2, .3], [.4, .6])
+        for i in 1:10
+            distr, data = sample_GMM([0, 0], [.2, .3], [.4, .6])
 
-        gmm = GaussianMixture(50) # should overfit
-        fit!(gmm, data, regularization=Settings.RegVarianceSimple(REG))
+            gmm = GaussianMixture(50) # should overfit
+            fit!(gmm, data, regularization=Settings.RegVarianceSimple(REG))
 
-        @test all(gmm.var .≥ REG)
+            @test all(gmm.var .≥ REG)
+        end
     end
 
-    @testset "Variance reg by restarts $i" for i in 1:10
-        distr, data = sample_GMM([0, 0], [.2, .3], [.4, .6])
+    @testset "Variance reg by restarts" begin
+        for i in 1:10
+            distr, data = sample_GMM([0, 0], [.2, .3], [.4, .6])
 
-        gmm = GaussianMixture(50) # should overfit
-        fit!(gmm, data, regularization=Settings.RegVarianceReset())
+            gmm = GaussianMixture(50) # should overfit
+            fit!(gmm, data, regularization=Settings.RegVarianceReset())
 
-        @test all(gmm.var .> 0)
+            @test all(gmm.var .> 0)
+        end
     end
 end
 
@@ -69,29 +77,46 @@ end
     mu_sorted = sort(distr.means)
     var_sorted = sort(distr.stds .^2)
 
-    dmm = DynamicMixture(Online(GaussianMixture(2), 0.9))
+    K, N = 2, length(data)
+    # Need to set high α≥0.9, otherwise
+    # weight of one component goes to zero
+    dmm = DynamicMixture(Online(GaussianMixture(K), 0.99))
+    @test n_components(dmm) == K
     fit!(dmm, data, 200)
 
-    @testset "Check params $t" for t in 1:size(dmm.P, 2)
-        @test sort(dmm.P[:, t]) ≈ p_sorted atol=atol
-        @test sort(dmm.M[:, t]) ≈ mu_sorted atol=atol
-        @test sort(dmm.V[:, t]) ≈ var_sorted atol=atol
+    @test size(dmm.P) == (K, N)
+    @test size(dmm.M) == size(dmm.P)
+    @test size(dmm.V) == size(dmm.P)
+
+    successes = zeros(Int, 3)
+    total = size(dmm.P, 2)
+    for t in 1:size(dmm.P, 2)
+        successes[1] += isapprox(sort(dmm.P[:, t]), p_sorted; atol)
+        successes[2] += isapprox(sort(dmm.M[:, t]), mu_sorted; atol)
+        successes[3] += isapprox(sort(dmm.V[:, t]), var_sorted; atol)
+    end
+
+    success_rates = [0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.95]
+    @testset "Success rate $rate $i" for rate in success_rates, i in 1:length(successes)
+        @test successes[i] / total ≥ rate
     end
 end
 
-@testset verbose=true "Divergences" begin
-    @testset "Cauchy-Schwarz $i" for i in 1:10
-        distr, data = sample_GMM([-rand(), rand()], [.2, .3], [.4, .6])
+@testset "Divergences" begin
+    @testset "Cauchy-Schwarz" begin
+        for i in 1:10
+            distr, data = sample_GMM([-rand(), rand()], [.2, .3], [.4, .6])
 
-        gmm = GaussianMixture(2)
-        fit!(gmm, data)
-        distr_hat = distribution(gmm)
+            gmm = GaussianMixture(2)
+            fit!(gmm, data)
+            distr_hat = distribution(gmm)
 
-        @test cauchy_schwarz(distr, distr) ≥ 0
-        @test cauchy_schwarz(distr, distr) ≈ 0 atol=1e-10
-        @test cauchy_schwarz(distr, distr_hat) ≈ cauchy_schwarz(distr_hat, distr)
-        @test cauchy_schwarz(distr, distr_hat) ≈ 0 atol=atol
+            @test cauchy_schwarz(distr, distr) ≥ 0
+            @test cauchy_schwarz(distr, distr) ≈ 0 atol=1e-10
+            @test cauchy_schwarz(distr, distr_hat) ≈ cauchy_schwarz(distr_hat, distr)
+            @test cauchy_schwarz(distr, distr_hat) ≈ 0 atol=atol
+        end
     end
 end
 
-end
+end # testset "MovingMixtures"
