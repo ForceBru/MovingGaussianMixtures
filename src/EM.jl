@@ -28,6 +28,34 @@ end
     log_likelihood(G, p, mu, var, x, nothing)
 end
 
+ELBO(G_kn::Real, p_k::Real, mu_k::Real, var_k::Real, x_n::Real) =
+    G_kn * (
+        log(p_k) - (log(2pi) + log(var_k) + (x_n - mu_k)^2 / var_k) / 2
+        - log(G_kn + 1e-100) #FIXME: entropy calculation correct?
+        # Need to add 1e-100 inside log to avoid NaN when `G[k, n] ≈ 0`
+    )
+
+"""
+Compute ELBO at a given _point_ `x`.
+"""
+function ELBO(
+    g::AV{<:Real}, p::AV{<:Real}, mu::AV{<:Real}, var::AV{<:Real}, x::Real,
+    ::Nothing
+)
+    ret = g |> eltype |> zero
+    @turbo for k in eachindex(g)
+        ret += ELBO(g[k], p[k], mu[k], var[k], x)
+    end
+
+    ret
+end
+
+# Posterior regularization does NOT affect ELBO
+@inline ELBO(
+    g::AV{<:Real}, p::AV{<:Real}, mu::AV{<:Real}, var::AV{<:Real}, x::Real,
+    ::Union{Settings.AbstractRegPosterior, Settings.RegVarianceSimple, Settings.RegVarianceReset}
+) = ELBO(g, p, mu, var, x, nothing)
+
 """
 Compute ELBO = E_q ( log[p(X, Z | THETA)] - log[q(Z)] )
 
@@ -41,11 +69,7 @@ function ELBO(
     ret = G |> eltype |> zero
 
     @tturbo for n in 1:N, k in 1:K
-        ret += G[k, n] * (
-            log(p[k]) - (LN2PI + log(var[k]) + (x[n] - mu[k])^2 / var[k]) / 2
-            - log(G[k, n] + 1e-100) #FIXME: entropy calculation correct?
-            # Need to add 1e-100 inside log to avoid NaN when `G[k, n] ≈ 0`
-        )
+        ret += ELBO(G[k, n], p[k], mu[k], var[k], x[n])
     end
 
     ret
