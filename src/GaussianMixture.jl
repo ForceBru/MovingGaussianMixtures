@@ -39,6 +39,7 @@ mutable struct GaussianMixture{T<:Real}
     history_ELBO::Vector{T}
     "Convergence indicator"
     converged::Bool
+    has_valid_params::Bool
 
     function GaussianMixture(n_components::Integer, T::Type{<:Real}=Float64)
         (n_components > 0) || throw(ArgumentError(
@@ -53,7 +54,7 @@ mutable struct GaussianMixture{T<:Real}
             p, copy(p), copy(p),
             zeros(T, K, N),
             0x00, T[],
-            false
+            false, false
         )
     end
 end
@@ -61,11 +62,19 @@ end
 const GM = GaussianMixture{T} where T
 
 function Base.show(io::IO, ::MIME"text/plain", gmm::GM; digits::Integer=3)
-    print(io, typeof(gmm), " with $(gmm.K) components (converged: $(gmm.converged)):\n")
+    state = gmm.has_valid_params ? "valid" : "invalid"
+
+    print(io, typeof(gmm), " with $(gmm.K) components ($state; converged: $(gmm.converged)):\n")
     print(io, "\tp  = ", round.(gmm.p; digits), '\n')
     print(io, "\tmu = ", round.(gmm.mu; digits), '\n')
     print(io, "\tvar= ", round.(gmm.var; digits))
 end
+
+n_components(gmm::GaussianMixture) = gmm.K
+get_ELBO(gmm::GaussianMixture) = gmm.ELBO[end]
+get_params(gmm::GaussianMixture) = (p=gmm.p, mu=gmm.mu, var=gmm.var)
+has_converged(gmm::GaussianMixture) = gmm.converged
+
 
 """
 $(TYPEDSIGNATURES)
@@ -176,10 +185,12 @@ function fit!(
     @assert length(data) > 0
     @assert max_iter > 0
     
-    if gmm.N != length(data)
+    if gmm.N != length(data) || gmm.N != size(gmm.G, 2)
         gmm.N = length(data)
         gmm.G = zeros(T, gmm.K, gmm.N)
     end
+
+    @assert size(gmm.G) == (gmm.K, gmm.N)
 
     # Ensure that the regularization is computed
     # for the correct number of components
@@ -197,6 +208,9 @@ function fit!(
     gmm.history_ELBO = Vector{T}(undef, max_iter)
     gmm.history_ELBO .= NaN
     gmm.converged = false
+    gmm.has_valid_params = false
+
+    # Set up initial parameters
     initialize!(gmm, data, init_strategy, regularization)
     !has_zeros(gmm.var) || throw(ZeroVarianceException(gmm.var))
 
@@ -213,6 +227,7 @@ function fit!(
 
     ProgressMeter.finish!(progr)
     gmm.converged = should_stop(gmm, stopping_criterion)
+    gmm.has_valid_params = !has_zeros(gmm.var)
     gmm.history_ELBO = gmm.history_ELBO[.~isnan.(gmm.history_ELBO)]
 
     gmm
