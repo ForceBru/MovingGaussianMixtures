@@ -30,5 +30,9 @@ include("Divergences.jl")
 using .Divergences
 
 precompile(fit!, (GaussianMixture{Float64}, Vector{Float64}))
+precompile(
+    step_E!,
+    (Matrix{Float64}, Vector{Float64}, Vector{Float64}, Vector{Float64}, Vector{Float64}, Nothing)
+)
 
 end
