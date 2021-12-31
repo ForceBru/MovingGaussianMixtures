@@ -1,4 +1,4 @@
-module MovingMixtures
+module MovingGaussianMixtures
 
 export GaussianMixture, Moving, fit!, distribution, Settings
 export Online, Windowed, DynamicMixture
