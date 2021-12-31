@@ -29,4 +29,6 @@ include("DynamicMixture.jl")
 include("Divergences.jl")
 using .Divergences
 
+precompile(fit!, (GaussianMixture{Float64}, Vector{Float64}))
+
 end
