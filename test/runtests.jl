@@ -1,7 +1,7 @@
 using Test
 using Distributions
 
-using MovingMixtures
+using MovingGaussianMixtures
 
 const atol = 0.1
 const SAMPLE_SIZE = 1000
@@ -13,7 +13,9 @@ function sample_GMM(mus, stds, ps)
     distr, data
 end
 
-@testset "MovingMixtures" begin
+@testset "MovingGaussianMixtures" begin
+
+include("test_EM.jl")
 
 @testset "Simple mixtures" begin
     @testset "2 components easy" begin
@@ -119,4 +121,4 @@ end
     end
 end
 
-end # testset "MovingMixtures"
+end # testset "MovingGaussianMixtures"
