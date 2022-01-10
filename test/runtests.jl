@@ -55,7 +55,7 @@ end
             distr, data = sample_GMM([0, 0], [.2, .3], [.4, .6])
 
             gmm = GaussianMixture(50) # should overfit
-            fit!(gmm, data, regularization=Settings.RegVarianceSimple(REG))
+            fit!(gmm, data, regularization=Settings.RegVarianceAddEps(REG))
 
             @test all(gmm.var .≥ REG)
         end
@@ -113,8 +113,11 @@ end
             fit!(gmm, data)
             distr_hat = distribution(gmm)
 
-            @test cauchy_schwarz(distr, distr) ≥ 0
-            @test cauchy_schwarz(distr, distr) ≈ 0 atol=1e-10
+            CS_self = cauchy_schwarz(distr, distr)
+            if CS_self < 0
+                @test CS_self ≈ 0
+            end
+            @test CS_self ≈ 0 atol=1e-10
             @test cauchy_schwarz(distr, distr_hat) ≈ cauchy_schwarz(distr_hat, distr)
             @test cauchy_schwarz(distr, distr_hat) ≈ 0 atol=atol
         end

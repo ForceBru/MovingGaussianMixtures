@@ -194,8 +194,8 @@ function fit!(
 
     # Ensure that the regularization is computed
     # for the correct number of components
-    if regularization isa Settings.RegPosteriorSimple
-        regularization = Settings.RegPosteriorSimple(regularization.eps, gmm.K)
+    if regularization isa Settings.RegPosteriorNonzero
+        regularization = Settings.RegPosteriorNonzero(regularization.eps, gmm.K)
     end
 
     progr = Progress(

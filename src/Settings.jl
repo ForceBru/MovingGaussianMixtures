@@ -87,10 +87,29 @@ Regularization is needed mainly to prevent the algorithm
 from zeroing-out components' variances.
 """
 abstract type AbstractRegularization end
-abstract type AbstractRegPosterior <: AbstractRegularization end
-abstract type AbstractRegPrior <: AbstractRegularization end
+abstract type AbstractRegAdHoc <: AbstractRegularization end
 
 const MaybeRegularization = Union{AbstractRegularization, Nothing}
+
+"""
+$(TYPEDEF)
+Regularize posterior q(z) such that `q(z) > 0` for any `z`
+by adding `eps > 0` to the numerator in posterior computation.
+
+This is equivalent to modifying the mixture PDF `p(x)`
+to be `p(x) + eps`. It won't integrate to one,
+but this guarantees that posteriors will be strictly positive.
+"""
+struct RegPosteriorAddEps{T<:Real} <: AbstractRegAdHoc
+    "Small number to add to numerator of each posterior prob."
+    eps::T
+
+    function RegPosteriorAddEps(eps::T) where T<:Real
+        @assert eps ≥ 0
+
+        new{T}(eps)
+    end
+end
 
 """
 $(TYPEDEF)
@@ -106,7 +125,7 @@ and `K` is the number of mixture components.
 
 $(TYPEDFIELDS)
 """
-struct RegPosteriorSimple{T<:Real} <: AbstractRegPosterior
+struct RegPosteriorNonzero{T<:Real} <: AbstractRegAdHoc
     "Minimum probability in the posterior distribution q(z)"
     eps::T
 
@@ -115,7 +134,7 @@ struct RegPosteriorSimple{T<:Real} <: AbstractRegPosterior
     "Number of mixture components"
     K::Integer
 
-    function RegPosteriorSimple(eps::T, K::Integer) where T<:Real
+    function RegPosteriorNonzero(eps::T, K::Integer) where T<:Real
         @assert eps ≥ 0
         @assert K > 0
 
@@ -135,7 +154,7 @@ $(TYPEDSIGNATURES)
 
 Regularize posterior q(z) such that `q(z) >= eps >= 0` for any `z`.
 """
-RegPosteriorSimple(eps::Real) = RegPosteriorSimple(eps, 1)
+RegPosteriorNonzero(eps::Real) = RegPosteriorNonzero(eps, 1)
 
 """
 $(TYPEDEF)
@@ -148,13 +167,13 @@ var[k] = var[k] + \\epsilon
 
 $(TYPEDFIELDS)
 """
-struct RegVarianceSimple{T<:Real} <: AbstractRegPrior
+struct RegVarianceAddEps{T<:Real} <: AbstractRegAdHoc
     "Small value to add to components' variances"
     eps::T
     #FIXME: this results in a really high KL divergence
     # How bad is this??? VI also does this - is it "bad"?..
 
-    function RegVarianceSimple(eps::T) where T<:Real
+    function RegVarianceAddEps(eps::T) where T<:Real
         @assert eps > 0
         new{T}(eps)
     end
@@ -167,6 +186,6 @@ If the variance of a component is too close to zero,
 set this component's variance to equal the maximum estimate
 and the component's mean - to a randomly scaled element of the training data.
 """
-struct RegVarianceReset <: AbstractRegPrior end
+struct RegVarianceReset <: AbstractRegAdHoc end
 
 end

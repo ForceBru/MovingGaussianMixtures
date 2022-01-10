@@ -22,9 +22,9 @@ end
 
 @inline function log_likelihood(
     G::AM{<:Real}, p::AV{<:Real}, mu::AV{<:Real}, var::AV{<:Real}, x::AV{<:Real},
-    ::Union{Settings.AbstractRegPosterior, Settings.RegVarianceSimple, Settings.RegVarianceReset}
+    ::Settings.AbstractRegAdHoc
 )
-    # Posterior regularization does NOT affect log-likelihood
+    # AdHoc regularization does NOT affect log-likelihood
     log_likelihood(G, p, mu, var, x, nothing)
 end
 
@@ -53,7 +53,7 @@ end
 # Posterior regularization does NOT affect ELBO
 @inline ELBO(
     g::AV{<:Real}, p::AV{<:Real}, mu::AV{<:Real}, var::AV{<:Real}, x::Real,
-    ::Union{Settings.AbstractRegPosterior, Settings.RegVarianceSimple, Settings.RegVarianceReset}
+    ::Settings.AbstractRegAdHoc
 ) = ELBO(g, p, mu, var, x, nothing)
 
 """
@@ -77,15 +77,22 @@ end
 
 @inline function ELBO(
     G::AM{<:Real}, p::AV{<:Real}, mu::AV{<:Real}, var::AV{<:Real}, x::AV{<:Real},
-    ::Union{Settings.AbstractRegPosterior, Settings.RegVarianceSimple, Settings.RegVarianceReset}
+    ::Settings.AbstractRegAdHoc
 )
     # Posterior regularization does NOT affect ELBO
     ELBO(G, p, mu, var, x, nothing)
 end
 
-@inline regularize_posteriors!(G::AM{<:Real}, ::Nothing)::Nothing = nothing
+@inline function regularize_posteriors!(G::AM{<:Real}, normalization::AM{<:Real}, ::Nothing)::Nothing
+    G ./= normalization
+    nothing
+end
 
-function regularize_posteriors!(G::AM{<:Real}, reg::Settings.RegPosteriorSimple)::Nothing
+@inline regularize_posteriors!(G::AM{<:Real}, normalization::AM{<:Real}, ::Settings.AbstractRegAdHoc) =
+    regularize_posteriors!(G, normalization, nothing)
+
+function regularize_posteriors!(G::AM{<:Real}, normalization::AM{<:Real}, reg::Settings.RegPosteriorNonzero)::Nothing
+    regularize_posteriors!(G, normalization, nothing)
     K = size(G, 1)
     s = reg.s
 
@@ -94,9 +101,18 @@ function regularize_posteriors!(G::AM{<:Real}, reg::Settings.RegPosteriorSimple)
     nothing
 end
 
+function regularize_posteriors!(G::AM{<:Real}, normalization::AM{<:Real}, reg::Settings.RegPosteriorAddEps)::Nothing
+    K = size(G, 1)
+
+    G .+= reg.eps
+    normalization .+= K * reg.eps
+
+    regularize_posteriors!(G, normalization, nothing)
+end
+
 function step_E!(
     G::AM{<:Real}, p::AV{<:Real}, mu::AV{<:Real}, var::AV{<:Real}, x::AV{<:Real},
-    reg::Union{Settings.AbstractRegPosterior, Nothing}
+    reg::Union{Settings.AbstractRegAdHoc, Nothing}
 )::Nothing
     K, N = size(G)
     normalization = zeros(eltype(G), 1, N)
@@ -106,25 +122,15 @@ function step_E!(
     end
     all(>(0), normalization) || throw(ZeroNormalizationException())
 
-    G ./= normalization
-
-    regularize_posteriors!(G, reg)
+    regularize_posteriors!(G, normalization, reg)
 end
 
-@inline function step_E!(
-    G::AM{<:Real}, p::AV{<:Real}, mu::AV{<:Real}, var::AV{<:Real}, x::AV{<:Real},
-    ::Settings.AbstractRegPrior
-)::Nothing
-    # Prior regularization does NOT affect Expectation step
-    step_E!(G, p, mu, var, x, nothing)
-end
-
-@inline function calc_weights!(p::AV{<:Real}, G::AM{<:Real}, ev::AV{<:Real}, ::Nothing)::Nothing
+function calc_weights!(p::AV{<:Real}, G::AM{<:Real}, ev::AV{<:Real}, ::Nothing)::Nothing
     p .= ev ./ sum(ev)
     nothing
 end
 
-@inline calc_weights!(p::AV{<:Real}, G::AM{<:Real}, ev::AV{<:Real}, ::Settings.AbstractRegPrior) =
+calc_weights!(p::AV{<:Real}, G::AM{<:Real}, ev::AV{<:Real}, ::Settings.AbstractRegAdHoc) =
     calc_weights!(p, G, ev, nothing)
 
 function calc_means!(mu::AV{<:Real}, G::AM{<:Real}, ev::AV{<:Real}, x::AV{<:Real}, ::Nothing)::Nothing
@@ -137,7 +143,7 @@ function calc_means!(mu::AV{<:Real}, G::AM{<:Real}, ev::AV{<:Real}, x::AV{<:Real
     nothing
 end
 
-@inline calc_means!(mu::AV{<:Real}, G::AM{<:Real}, ev::AV{<:Real}, x::AV{<:Real}, ::Settings.AbstractRegPrior) =
+calc_means!(mu::AV{<:Real}, G::AM{<:Real}, ev::AV{<:Real}, x::AV{<:Real}, ::Settings.AbstractRegAdHoc) =
     calc_means!(mu, G, ev, x, nothing)
 
 function calc_variances!(
@@ -155,7 +161,7 @@ end
 
 function calc_variances!(
     var::AV{<:Real}, G::AM{<:Real}, ev::AV{<:Real}, x::AV{<:Real}, mu::AV{<:Real},
-    reg::Settings.RegVarianceSimple
+    reg::Settings.RegVarianceAddEps
 )::Nothing
     calc_variances!(var, G, ev, x, mu, nothing)
     var .+= reg.eps
@@ -187,14 +193,14 @@ function calc_variances!(
     nothing
 end
 
-@inline calc_variances!(
+calc_variances!(
     var::AV{<:Real}, G::AM{<:Real}, ev::AV{<:Real}, x::AV{<:Real}, mu::AV{<:Real},
-    ::Settings.AbstractRegPrior
+    ::Settings.AbstractRegAdHoc
 ) = calc_variances!(var, G, ev, x, mu, nothing)
 
 function step_M!(
     G::AM{<:Real}, p::AV{<:Real}, mu::AV{<:Real}, var::AV{<:Real}, x::AV{<:Real},
-    reg::Union{Settings.AbstractRegPrior, Nothing}
+    reg::Union{Settings.AbstractRegAdHoc, Nothing}
 )::Nothing
     evidences = sum(G, dims=2) |> vec
     all(>(0), evidences) || throw(ZeroNormalizationException())
@@ -202,12 +208,4 @@ function step_M!(
     calc_weights!(p, G, evidences, reg)
     calc_means!(mu, G, evidences, x, reg)
     calc_variances!(var, G, evidences, x, mu, reg)
-end
-
-@inline function step_M!(
-    G::AM{<:Real}, p::AV{<:Real}, mu::AV{<:Real}, var::AV{<:Real}, x::AV{<:Real},
-    ::Settings.AbstractRegPosterior
-)::Nothing
-    # Posterior regularization does NOT affect maximization step
-    step_M!(G, p, mu, var, x, nothing)
 end
