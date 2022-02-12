@@ -42,6 +42,8 @@ function ELBO(
     g::AV{<:Real}, p::AV{<:Real}, mu::AV{<:Real}, var::AV{<:Real}, x::Real,
     ::Nothing
 )
+    error("Why am I executed?")
+    
     ret = g |> eltype |> zero
     @turbo for k in eachindex(g)
         ret += ELBO(g[k], p[k], mu[k], var[k], x)
@@ -69,7 +71,13 @@ function ELBO(
     ret = G |> eltype |> zero
 
     @tturbo for n in 1:N, k in 1:K
-        ret += ELBO(G[k, n], p[k], mu[k], var[k], x[n])
+        ret += G[k, n] * (
+            log(p[k]) - (log(2pi) + log(var[k]) + (x[n] - mu[k])^2 / var[k]) / 2
+            - log(G[k, n] + 1e-100) #FIXME: entropy calculation correct?
+            # Need to add 1e-100 inside log to avoid NaN when `G[k, n] ≈ 0`
+        )
+        # Calling the function is slow (-25% exec speed)
+        # ELBO(G[k, n], p[k], mu[k], var[k], x[n])
     end
 
     ret
@@ -84,7 +92,11 @@ end
 end
 
 @inline function regularize_posteriors!(G::AM{<:Real}, normalization::AM{<:Real}, ::Nothing)::Nothing
-    G ./= normalization
+    K, N = size(G)
+    @tturbo for n ∈ 1:N, k ∈ 1:K
+        G[k, n] /= normalization[1, n]
+    end
+    # G ./= normalization
     nothing
 end
 
@@ -117,7 +129,9 @@ function step_E!(
     K, N = size(G)
     normalization = zeros(eltype(G), 1, N)
     @tturbo for n in 1:N, k in 1:K
-        G[k, n] = p[k] * normal_pdf(x[n], mu[k], var[k])
+        G[k, n] = p[k] * exp(-(x[n] - mu[k])^2 / (2var[k])) / sqrt(2pi * var[k])
+        # Calling the function is slow (-20% exec speed)
+        # normal_pdf(x[n], mu[k], var[k])
         normalization[1, n] += G[k, n]
     end
     all(>(0), normalization) || throw(ZeroNormalizationException())
@@ -202,7 +216,11 @@ function step_M!(
     G::AM{<:Real}, p::AV{<:Real}, mu::AV{<:Real}, var::AV{<:Real}, x::AV{<:Real},
     reg::Union{Settings.AbstractRegAdHoc, Nothing}
 )::Nothing
-    evidences = sum(G, dims=2) |> vec
+    K, N = size(G)
+    evidences = zeros(K) # very small vector
+    @tturbo for n ∈ 1:N, k ∈ 1:K
+        evidences[k] += G[k, n]
+    end
     all(>(0), evidences) || throw(ZeroNormalizationException())
 
     calc_weights!(p, G, evidences, reg)
