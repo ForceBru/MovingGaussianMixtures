@@ -15,6 +15,10 @@ function log_likelihood(
             s += p[k] * normal_pdf(x[n], mu[k], var[k])
         end
         ret += log(s)
+        # FIXME: tests of log-likelihood fail when multithreading is used?
+        # Possible data race?
+        # Very siilar code in documentation:
+        # https://juliasimd.github.io/LoopVectorization.jl/latest/examples/sum_of_squared_error
     end
 
     ret
@@ -43,7 +47,7 @@ function ELBO(
     ::Nothing
 )
     error("Why am I executed?")
-    
+
     ret = g |> eltype |> zero
     @turbo for k in eachindex(g)
         ret += ELBO(g[k], p[k], mu[k], var[k], x)
