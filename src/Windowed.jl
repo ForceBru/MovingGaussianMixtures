@@ -45,11 +45,17 @@ end
 function update!(
     mov::Windowed{T}, x::T;
     init_strategy::Settings.AbstractInitStrategy=Settings.InitKeepParameters(),
+    # Don't record full ELBO history for each window
+    record_all_ELBO::Bool=false,
     kwargs...
 ) where T<:Real
     window = slide_window!(mov, x)
 
-    (mov.unfilled_entries == 0) && fit!(mov.mix, window; init_strategy, kwargs...)
+    (mov.unfilled_entries == 0) && fit!(
+        mov.mix, window;
+        init_strategy, record_all_ELBO,
+        kwargs...
+    )
 
     if init_strategy isa Settings.InitKeepPosterior
         # Slide posterior distributions too
