@@ -1,7 +1,7 @@
 name = "MovingGaussianMixtures"
 uuid = "cf9469fe-d945-4119-b53c-8c16b8a28fa2"
 authors = ["ForceBru <ForceBru@users.noreply.github.com> and contributors"]
-version = "0.1.9"
+version = "0.1.10"
 
 [deps]
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"

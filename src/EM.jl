@@ -17,7 +17,7 @@ function log_likelihood(
         ret += log(s)
         # FIXME: tests of log-likelihood fail when multithreading is used?
         # Possible data race?
-        # Very siilar code in documentation:
+        # Very similar code in documentation:
         # https://juliasimd.github.io/LoopVectorization.jl/latest/examples/sum_of_squared_error
     end
 
@@ -74,15 +74,26 @@ function ELBO(
     K, N = size(G)
     ret = G |> eltype |> zero
 
-    @tturbo for n in 1:N, k in 1:K
-        ret += G[k, n] * (
-            log(p[k]) - (log(2pi) + log(var[k]) + (x[n] - mu[k])^2 / var[k]) / 2
-            - log(G[k, n] + 1e-100) #FIXME: entropy calculation correct?
-            # Need to add 1e-100 inside log to avoid NaN when `G[k, n] ≈ 0`
+    ln_2pi = log(2π)
+    ln_p = log.(p)
+    ln_var = log.(var)
+    @tturbo for k ∈ 1:K, n ∈ 1:N
+        q = G[k, n]
+        ret += q * (
+            ln_p[k] - (ln_2pi + ln_var[k] + (x[n] - mu[k])^2 / var[k]) / 2
+            - log(q + 1e-100)
         )
-        # Calling the function is slow (-25% exec speed)
-        # ELBO(G[k, n], p[k], mu[k], var[k], x[n])
     end
+
+    # @tturbo for n in 1:N, k in 1:K
+    #     ret += G[k, n] * (
+    #         log(p[k]) - (log(2pi) + log(var[k]) + (x[n] - mu[k])^2 / var[k]) / 2
+    #         - log(G[k, n] + 1e-100) #FIXME: entropy calculation correct?
+    #         # Need to add 1e-100 inside log to avoid NaN when `G[k, n] ≈ 0`
+    #     )
+    #     # Calling the function is slow (-25% exec speed)
+    #     # ELBO(G[k, n], p[k], mu[k], var[k], x[n])
+    # end
 
     ret
 end
@@ -95,19 +106,19 @@ end
     ELBO(G, p, mu, var, x, nothing)
 end
 
-@inline function regularize_posteriors!(G::AM{<:Real}, normalization::AM{<:Real}, ::Nothing)::Nothing
+@inline function regularize_posteriors!(G::AM{<:Real}, normalization::AV{<:Real}, ::Nothing)::Nothing
     K, N = size(G)
-    @tturbo for n ∈ 1:N, k ∈ 1:K
-        G[k, n] /= normalization[1, n]
+    @tturbo for k ∈ 1:K, n ∈ 1:N
+        G[k, n] /= normalization[n]
     end
     # G ./= normalization
     nothing
 end
 
-@inline regularize_posteriors!(G::AM{<:Real}, normalization::AM{<:Real}, ::Settings.AbstractRegAdHoc) =
+@inline regularize_posteriors!(G::AM{<:Real}, normalization::AV{<:Real}, ::Settings.AbstractRegAdHoc) =
     regularize_posteriors!(G, normalization, nothing)
 
-function regularize_posteriors!(G::AM{<:Real}, normalization::AM{<:Real}, reg::Settings.RegPosteriorNonzero)::Nothing
+function regularize_posteriors!(G::AM{<:Real}, normalization::AV{<:Real}, reg::Settings.RegPosteriorNonzero)::Nothing
     regularize_posteriors!(G, normalization, nothing)
     K = size(G, 1)
     s = reg.s
@@ -117,11 +128,11 @@ function regularize_posteriors!(G::AM{<:Real}, normalization::AM{<:Real}, reg::S
     nothing
 end
 
-function regularize_posteriors!(G::AM{<:Real}, normalization::AM{<:Real}, reg::Settings.RegPosteriorAddEps)::Nothing
+function regularize_posteriors!(G::AM{<:Real}, normalization::AV{<:Real}, reg::Settings.RegPosteriorAddEps)::Nothing
     K = size(G, 1)
 
-    G .+= reg.eps
-    normalization .+= K * reg.eps
+    @turbo G .+= reg.eps
+    @turbo normalization .+= K * reg.eps
 
     regularize_posteriors!(G, normalization, nothing)
 end
@@ -131,12 +142,13 @@ function step_E!(
     reg::Union{Settings.AbstractRegAdHoc, Nothing}
 )::Nothing
     K, N = size(G)
-    normalization = zeros(eltype(G), 1, N)
-    @tturbo for n in 1:N, k in 1:K
-        G[k, n] = p[k] * exp(-(x[n] - mu[k])^2 / (2var[k])) / sqrt(2pi * var[k])
+    normalization = zeros(eltype(G), N)
+    sqrt_2pivar = sqrt.(2π .* var)
+    @tturbo for k in 1:K, n in 1:N
+        G[k, n] = p[k] * exp(-(x[n] - mu[k])^2 / (2var[k])) / sqrt_2pivar[k]
         # Calling the function is slow (-20% exec speed)
         # normal_pdf(x[n], mu[k], var[k])
-        normalization[1, n] += G[k, n]
+        normalization[n] += G[k, n]
     end
     all(>(0), normalization) || throw(ZeroNormalizationException())
 
@@ -155,7 +167,7 @@ function calc_means!(mu::AV{<:Real}, G::AM{<:Real}, ev::AV{<:Real}, x::AV{<:Real
     K, N = size(G)
 
     mu .= zero(eltype(mu))
-    @tturbo for n in 1:N, k in 1:K
+    @tturbo for k in 1:K, n in 1:N
         mu[k] += G[k, n] / ev[k] * x[n]
     end
     nothing
@@ -171,7 +183,7 @@ function calc_variances!(
     K, N = size(G)
 
     var .= zero(eltype(var))
-    @tturbo for n in 1:N, k in 1:K
+    @tturbo for k in 1:K, n in 1:N
         var[k] += G[k, n] / ev[k] * (x[n] - mu[k])^2
     end
     nothing

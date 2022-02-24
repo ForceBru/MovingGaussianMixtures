@@ -180,8 +180,7 @@ function fit!(
     init_strategy::Settings.AbstractInitStrategy=Settings.InitRandomPosterior(200),
     stopping_criterion::Settings.AbstractStopping=Settings.StoppingELBO(1e-10, 20),
     regularization::Settings.MaybeRegularization=nothing,
-    max_iter::Unsigned=UInt(5_000),
-    record_all_ELBO::Bool=true, quiet::Bool=true
+    max_iter::Unsigned=UInt(5_000), quiet::Bool=true
 ) where T<:Real
     @assert length(data) > 0
     @assert max_iter > 0
@@ -222,16 +221,10 @@ function fit!(
         !has_zeros(gmm.var) || throw(ZeroVarianceException(gmm.var))
 
         gmm.n_iter += 0x01
-        if record_all_ELBO
-            gmm.history_ELBO[gmm.n_iter] = ELBO(gmm, data, regularization)
-        end
+        gmm.history_ELBO[gmm.n_iter] = ELBO(gmm, data, regularization)
         next!(progr)
     end
 
-    if !record_all_ELBO
-        # Record only the last ELBO
-        gmm.history_ELBO[end] = ELBO(gmm, data, regularization)
-    end
     ProgressMeter.finish!(progr)
 
     gmm.converged = should_stop(gmm, stopping_criterion)

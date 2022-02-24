@@ -154,7 +154,9 @@ $(TYPEDSIGNATURES)
 
 Regularize posterior q(z) such that `q(z) >= eps >= 0` for any `z`.
 """
-RegPosteriorNonzero(eps::Real) = RegPosteriorNonzero(eps, 1)
+function RegPosteriorNonzero(eps::T) where T<:Real
+    RegPosteriorNonzero(eps, 1)
+end
 
 """
 $(TYPEDEF)
