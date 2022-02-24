@@ -39,23 +39,6 @@ ELBO(G_kn::Real, p_k::Real, mu_k::Real, var_k::Real, x_n::Real) =
         # Need to add 1e-100 inside log to avoid NaN when `G[k, n] ≈ 0`
     )
 
-"""
-Compute ELBO at a given _point_ `x`.
-"""
-function ELBO(
-    g::AV{<:Real}, p::AV{<:Real}, mu::AV{<:Real}, var::AV{<:Real}, x::Real,
-    ::Nothing
-)
-    error("Why am I executed?")
-
-    ret = g |> eltype |> zero
-    @turbo for k in eachindex(g)
-        ret += ELBO(g[k], p[k], mu[k], var[k], x)
-    end
-
-    ret
-end
-
 # Posterior regularization does NOT affect ELBO
 @inline ELBO(
     g::AV{<:Real}, p::AV{<:Real}, mu::AV{<:Real}, var::AV{<:Real}, x::Real,
@@ -75,25 +58,15 @@ function ELBO(
     ret = G |> eltype |> zero
 
     ln_2pi = log(2π)
-    ln_p = log.(p)
-    ln_var = log.(var)
+    ln_p, ln_var = log.(p), log.(var)
     @tturbo for k ∈ 1:K, n ∈ 1:N
         q = G[k, n]
         ret += q * (
             ln_p[k] - (ln_2pi + ln_var[k] + (x[n] - mu[k])^2 / var[k]) / 2
             - log(q + 1e-100)
+            # Need to add 1e-100 inside log to avoid NaN when `G[k, n] ≈ 0`
         )
     end
-
-    # @tturbo for n in 1:N, k in 1:K
-    #     ret += G[k, n] * (
-    #         log(p[k]) - (log(2pi) + log(var[k]) + (x[n] - mu[k])^2 / var[k]) / 2
-    #         - log(G[k, n] + 1e-100) #FIXME: entropy calculation correct?
-    #         # Need to add 1e-100 inside log to avoid NaN when `G[k, n] ≈ 0`
-    #     )
-    #     # Calling the function is slow (-25% exec speed)
-    #     # ELBO(G[k, n], p[k], mu[k], var[k], x[n])
-    # end
 
     ret
 end
@@ -234,7 +207,7 @@ function step_M!(
 )::Nothing
     K, N = size(G)
     evidences = zeros(K) # very small vector
-    @tturbo for n ∈ 1:N, k ∈ 1:K
+    @tturbo for k ∈ 1:K, n ∈ 1:N
         evidences[k] += G[k, n]
     end
     all(>(0), evidences) || throw(ZeroNormalizationException())

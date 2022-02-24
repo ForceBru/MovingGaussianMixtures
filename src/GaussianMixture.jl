@@ -180,7 +180,7 @@ function fit!(
     init_strategy::Settings.AbstractInitStrategy=Settings.InitRandomPosterior(200),
     stopping_criterion::Settings.AbstractStopping=Settings.StoppingELBO(1e-10, 20),
     regularization::Settings.MaybeRegularization=nothing,
-    max_iter::Unsigned=UInt(5_000), quiet::Bool=true
+    max_iter::Unsigned=UInt(1_000), quiet::Bool=true
 ) where T<:Real
     @assert length(data) > 0
     @assert max_iter > 0
