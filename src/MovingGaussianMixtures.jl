@@ -29,6 +29,8 @@ include("DynamicMixture.jl")
 include("Divergences.jl")
 using .Divergences
 
+include("Experimental.jl")
+
 precompile(fit!, (GaussianMixture{Float64}, Vector{Float64}))
 precompile(
     step_E!,
