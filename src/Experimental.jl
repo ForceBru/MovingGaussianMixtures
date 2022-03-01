@@ -99,6 +99,13 @@ end
 
 OnlineEM(K::Integer) = OnlineEM{Float64}(K)
 
+@inline normal(x::Real, mu::Real, var::Real) = exp(-(x-mu)^2 / (2var)) / sqrt(2π * var)
+
+@inline function calc_g(x::Real, p::AbstractVector{<:Real}, mu::AbstractVector{<:Real}, var::AbstractVector{<:Real})
+	unnorm = @. p * normal(x, mu, var)
+	unnorm ./ sum(unnorm)
+end
+
 function update!(onl::OnlineEM, x::Real, γ::Real, M_step::Bool=true)
 	# 1. Estimate posteriors
 	gs = calc_g(x, onl.p, onl.mu, onl.var)
