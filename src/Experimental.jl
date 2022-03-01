@@ -121,7 +121,7 @@ function update!(onl::OnlineEM, x::Real, γ::Real, M_step::Bool=true)
 	onl
 end
 
-function initialize!(onl::OnlineEM, xs::AV{<:Real}, γ::Real)
+function initialize!(onl::OnlineEM, xs::AbstractVector{<:Real}, γ::Real)
 	for (i, x) ∈ enumerate(xs)
         # Don't update mixture params!
 		update!(onl, x, γ/i^0.1, false)
