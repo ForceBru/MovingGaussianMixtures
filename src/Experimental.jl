@@ -43,7 +43,7 @@ function online!(rm::RiskMetrics, series::AbstractVector{<:Real}, γ::Real; init
     @assert n_init > 0
     @assert length(series) > n_init
 
-    init && initialize!(rm, variances[1:n_init])
+    init && initialize!(rm, series[1:n_init])
 
     variances = similar(series)
 	for (i, x) ∈ enumerate(series)
@@ -97,7 +97,7 @@ function OnlineEM{T}(K::Integer; α::Real=50) where T<:Real
     )
 end
 
-OnlineEM(K::Integer) = OnlineEM{Float64}(K)
+OnlineEM(K::Integer; α::Real=50) = OnlineEM{Float64}(K; α)
 
 @inline normal(x::Real, mu::Real, var::Real) = exp(-(x-mu)^2 / (2var)) / sqrt(2π * var)
 
@@ -122,7 +122,7 @@ function update!(onl::OnlineEM, x::Real, γ::Real, M_step::Bool=true)
 		@. begin
 			onl.p = onl.A
 			onl.mu = onl.B / onl.A
-			onl.var = onl.C / onl.A - onl.mu^2
+			onl.var = abs(onl.C / onl.A - onl.mu^2) # can become slightly negative
 		end
 	end
 	onl
@@ -131,7 +131,7 @@ end
 function initialize!(onl::OnlineEM, xs::AbstractVector{<:Real}, γ::Real)
 	for (i, x) ∈ enumerate(xs)
         # Don't update mixture params!
-		update!(onl, x, γ/i^0.1, false)
+		update!(onl, x, γ/i^0.5, false)
 	end
 end
 
