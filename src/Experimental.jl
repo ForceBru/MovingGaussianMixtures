@@ -1,12 +1,43 @@
+"""
+This stuff is based on [1].
+
+1. Longerstaey, Jacques, and Martin Spencer. 1996.
+"RiskMetrics Technical Document - Fourth Edition"
+J.P.Morgan/Reuters.
+"""
 module Experimental
 
 export RiskMetrics, OnlineEM
-export online!
+export online!, smoothing
 
 import Statistics: var
 using ..DocStringExtensions, ..Distributions
 
 # ===== RiskMetrics =====
+
+"""
+$(TYPEDSIGNATURES)
+
+Calculate the smoothing factor equivalent to
+a rolling window of size `win_size` based on eq. 5.26 in the paper.
+"""
+function smoothing(win_size::Integer, tol::Real=0.01)
+    @assert tol > 0
+    @assert win_size > 0
+    
+    1 - exp(log(tol) / win_size)
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Verify the given smoothing parameter and return it
+"""
+function smoothing(γ::AbstractFloat)
+    @assert γ > 0
+
+    γ
+end
 
 """
 $(TYPEDEF)
@@ -46,7 +77,7 @@ function online!(rm::RiskMetrics, series::AbstractVector{<:Real}, γ::Real; init
     init && initialize!(rm, series[1:n_init])
 
     variances = similar(series)
-	for (i, x) ∈ enumerate(series)
+	for (i, x) in enumerate(series)
 		update!(rm, x, γ)
 		variances[i] = rm.var
 	end
@@ -67,7 +98,7 @@ $(TYPEDFIELDS)
 mutable struct OnlineEM{T<:Real}
     "Number of components"
     K::Integer
-    
+
     "Components' weights"
     p::Vector{T}
     "Components' means"
@@ -83,10 +114,12 @@ mutable struct OnlineEM{T<:Real}
     C::Vector{T}
 end
 
+"$(TYPEDSIGNATURES)"
 function OnlineEM{T}(K::Integer; α::Real=50) where T<:Real
     @assert K > 0
 
     p = rand(Dirichlet(K, α))
+    @assert isapprox(sum(p), 1)
     mu = zeros(T, K)
     var = ones(T, K)
 
@@ -97,18 +130,25 @@ function OnlineEM{T}(K::Integer; α::Real=50) where T<:Real
     )
 end
 
+"$(TYPEDSIGNATURES)"
 OnlineEM(K::Integer; α::Real=50) = OnlineEM{Float64}(K; α)
 
 @inline normal(x::Real, mu::Real, var::Real) = exp(-(x-mu)^2 / (2var)) / sqrt(2π * var)
 
-@inline function calc_g(x::Real, p::AbstractVector{<:Real}, mu::AbstractVector{<:Real}, var::AbstractVector{<:Real})
+@inline function calc_g(
+    x::Real, p::AbstractVector{<:Real}, mu::AbstractVector{<:Real}, var::AbstractVector{<:Real};
+    eps::Real=1e-6
+)
+    K = length(p)
 	unnorm = @. p * normal(x, mu, var)
-	unnorm ./ sum(unnorm)
+	g = unnorm ./ sum(unnorm)
+    @. (g + eps) / (1 + eps * K)
 end
 
 function update!(onl::OnlineEM, x::Real, γ::Real, M_step::Bool=true)
 	# 1. Estimate posteriors
 	gs = calc_g(x, onl.p, onl.mu, onl.var)
+    @assert isapprox(sum(gs), 1)
 
 	# 2. Update sufficient statistics
 	@. begin
@@ -124,12 +164,13 @@ function update!(onl::OnlineEM, x::Real, γ::Real, M_step::Bool=true)
 			onl.mu = onl.B / onl.A
 			onl.var = abs(onl.C / onl.A - onl.mu^2) # can become slightly negative
 		end
+        @assert isapprox(sum(onl.p), 1)
 	end
 	onl
 end
 
 function initialize!(onl::OnlineEM, xs::AbstractVector{<:Real}, γ::Real)
-	for (i, x) ∈ enumerate(xs)
+	for (i, x) in enumerate(xs)
         # Don't update mixture params!
 		update!(onl, x, γ/i^0.5, false)
 	end
@@ -146,7 +187,10 @@ Estimate mixture parameters of `series` with online EM.
 
 __Returns__: matrices of estimated parameters for each observation
 """
-function online!(online::OnlineEM, series::AbstractVector{<:Real}, γ::Real; init::Bool=true, n_init::Integer=100)
+function online!(
+    online::OnlineEM, series::AbstractVector{<:Real}, γ::Real;
+    init::Bool=true, n_init::Integer=100
+)
     @assert n_init > 0
     @assert length(series) > n_init
 
@@ -154,7 +198,7 @@ function online!(online::OnlineEM, series::AbstractVector{<:Real}, γ::Real; ini
 
     P = zeros(online.K, length(series))
 	M, V = similar(P), similar(P)
-    for (i, x) ∈ enumerate(series)
+    for (i, x) in enumerate(series)
 		update!(online, x, γ)
 		P[:, i] .= online.p
 		M[:, i] .= online.mu
